@@ -1,2 +1,0 @@
--- Reverta o schema inicial aqui
--- Ex: DROP TABLE users;
