@@ -1,31 +1,24 @@
-### SESSION_LOG_START | Versão: v0.2.1 | Data: 30/01/2026
+### SESSION_LOG_START | Versão: v0.4.0 | Data: 30/01/2026
 - ARQUIVOS CRIADOS/MODIFICADOS:
-  - M cmd/server/main.go
-  - M go.mod
-  - M go.sum
-  - A internal/api/auth/auth.go
-  - A internal/api/middleware/auth.go
-  - A internal/domain/identity/identity.go
-  - M internal/infrastructure/config/config.go
-  - M internal/infrastructure/database/database.go
-  - A internal/infrastructure/repository/postgres/identity.go
-  - A internal/usecase/auth/auth.go
-  - D migrations/000001_init_schema.down.sql
-  - D migrations/000001_init_schema.up.sql
+  - `internal/domain/stock/`
+  - `internal/domain/stock/warehouse.go`
+  - `internal/domain/stock/bin.go`
+  - `internal/domain/stock/movement.go`
+  - `internal/domain/stock/ledger.go`
+  - `internal/usecase/stock/`
+  - `internal/usecase/stock/usecase.go`
 - RESUMO TÉCNICO:
-  - Código para o módulo de identidade e segurança foi escrito.
-  - Código para a geração e validação de JWT foi adicionado.
-  - Middleware de autenticação foi adicionado, mas não há implementação de RBAC.
-  - Caso de uso de login com hashing de senha foi adicionado.
-  - Repositórios GORM para o domínio de identidade foram adicionados.
-  - A base para o sistema de auditoria com os campos created_by e updated_by foi adicionada.
+  - Criei as entidades de domínio para o gerenciamento de estoque: `Warehouse`, `Bin`, `StockMovement` e `StockLedger`.
+  - Cada entidade possui sua respectiva interface de repositório, definindo o contrato com a camada de infraestrutura.
+  - Criei o `StockUsecase` para orquestrar as operações de movimentação de estoque, incluindo validações de existência de item e armazém.
+  - A lógica de negócio para previnir estoque negativo e para registrar o ledger foi delegada para a implementação do repositório (`ApplyMovement`) para garantir a atomicidade e o locking transacional.
 - DÍVIDA TÉCNICA / PENDÊNCIAS:
-  - A chave secreta do JWT está hardcoded.
-  - Não há implementação de RBAC no middleware.
-  - Não há testes para os novos recursos.
-  - O log de request_id não está implementado.
-  - O graceful shutdown não está implementado.
-  - O circuit breaker não está implementado.
+  - Implementação da camada de infraestrutura (repositórios em `internal/infrastructure/repository/postgres/`) para as novas interfaces de `stock`.
+  - A implementação do repositório de `StockMovement` DEVE usar `SELECT ... FOR UPDATE` para garantir o pessimistic lock.
+  - A implementação do `ApplyMovement` DEVE ocorrer dentro de uma transação que também cria a entrada no `StockLedger`.
+  - Validação de estoque mínimo não foi implementada.
+  - Nenhuma API ou handler foi criado para expor a funcionalidade.
 - COMANDO DE VALIDAÇÃO:
-  - go build -o /dev/null ./...
+  - `go test ./...` (Nota: Nenhum teste foi escrito para as novas funcionalidades ainda).
+  - `go build ./...`
 ### SESSION_LOG_END
