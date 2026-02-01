@@ -48,6 +48,47 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 		movementRepo := repository.NewGormStockMovementRepository(tx)
 		ledgerRepo := repository.NewGormStockLedgerRepository(tx)
 
+		// Validate ItemID
+		itemRepo := repository.NewGormItemRepository(tx)
+		_, err := itemRepo.GetByID(ctx, itemID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("item not found")
+			}
+			return err
+		}
+
+		// Validate WarehouseID
+		warehouseRepo := repository.NewGormWarehouseRepository(tx)
+		warehouse, err := warehouseRepo.GetByID(ctx, warehouseID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("warehouse not found")
+			}
+			return err
+		}
+		if !warehouse.IsActive {
+			return errors.New("warehouse is inactive")
+		}
+
+		// Validate BinID if provided
+		if binID != nil {
+			binRepo := repository.NewGormBinRepository(tx)
+			bin, err := binRepo.GetByID(ctx, *binID)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errors.New("bin not found")
+				}
+				return err
+			}
+			if bin.WarehouseID != warehouseID {
+				return errors.New("bin does not belong to the specified warehouse")
+			}
+			if !bin.IsActive {
+				return errors.New("bin is inactive")
+			}
+		}
+
 		// 1. Get current stock with pessimistic lock
 		currentStock, err := stockRepo.GetStockForUpdate(ctx, itemID, warehouseID, binID)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
