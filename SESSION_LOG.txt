@@ -1,0 +1,22 @@
+### SESSION_LOG_START | Versão: v1.0.0 | Data: 01/02/2026
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - Dockerfile
+- RESUMO TÉCNICO:
+  - Corrigido o Dockerfile para utilizar uma imagem base do Go compatível com a versão definida no `go.mod` (`golang:1.25-alpine`).
+  - Implementado um build multi-stage no Dockerfile para garantir a criação de um binário estático e a sua execução em uma imagem `scratch`.
+  - O build foi configurado para `CGO_ENABLED=0` e `GOOS=linux`, com as flags `-a -installsuffix cgo` para garantir um binário totalmente estático.
+  - A aplicação foi executada em um container Docker, e o endpoint `/health` foi verificado com sucesso, respondendo com HTTP 200.
+  - O container permaneceu em execução mesmo com a falha na conexão com o banco de dados, e o erro foi devidamente logado, conforme esperado.
+  - O GATE 0.1 foi ATENDIDO.
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - Nenhuma.
+- COMANDO DE VALIDAÇÃO:
+  - `docker build -t doligo-scratch-test .`
+  - `docker run --name doligo-test-container -d -p 8081:8080 doligo-scratch-test`
+  - `docker ps | grep doligo-test-container`
+  - `docker logs doligo-test-container`
+  - `curl http://localhost:8081/health`
+  - `docker stop doligo-test-container && docker rm doligo-test-container`
+- DECLARAÇÃO DE AUSÊNCIA DE LOOP/RETRY/WAIT:
+  - Confirmo que nenhuma forma de loop, retry ou wait foi adicionada para a inicialização de dependências. A inicialização do banco de dados é não-bloqueante e fail-fast, conforme os requisitos.
+### SESSION_LOG_END
