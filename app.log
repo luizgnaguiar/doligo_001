@@ -1,0 +1,26 @@
+{"level":"info","time":"2026-02-01T19:58:29-03:00","message":"Logger initialized with level: info"}
+{"level":"info","time":"2026-02-01T19:58:29-03:00","message":"Application Environment: development"}
+{"level":"info","time":"2026-02-01T19:58:29-03:00","message":"Listening on Port: 8080"}
+{"level":"info","time":"2026-02-01T19:58:29-03:00","message":"PDF Worker Pool initialized."}
+2026/02/01 19:58:29 Worker #1 for 'PDFGenerator' started.
+2026/02/01 19:58:29 Worker #4 for 'PDFGenerator' started.
+2026/02/01 19:58:29 Worker #3 for 'PDFGenerator' started.
+2026/02/01 19:58:29 Worker #5 for 'PDFGenerator' started.
+2026/02/01 19:58:29 Worker #2 for 'PDFGenerator' started.
+{"level":"info","time":"2026-02-01T19:58:29-03:00","message":"Starting database and services initialization..."}
+
+   ____    __
+  / __/___/ /  ___
+ / _// __/ _ \/ _ \
+/___/\__/_//_/\___/ v4.15.0
+High performance, minimalist Go web framework
+https://echo.labstack.com
+____________________________________O/_______
+                                    O\
+{"level":"error","error":"listen tcp :8080: bind: address already in use","time":"2026-02-01T19:58:29-03:00","message":"HTTP server failed to start"}
+
+2026/02/01 19:58:29 [35m/Users/macbookpro/doligo_001/internal/infrastructure/db/database.go:34
+[0m[31m[error] [0mfailed to initialize database, got error failed to connect to `user=user database=dolibarr`:
+	[::1]:5432 (localhost): dial error: dial tcp [::1]:5432: connect: connection refused
+	127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused
+{"level":"error","error":"failed to connect to database: failed to connect to `user=user database=dolibarr`:\n\t[::1]:5432 (localhost): dial error: dial tcp [::1]:5432: connect: connection refused\n\t127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused","time":"2026-02-01T19:58:29-03:00","message":"Failed to initialize database. Service routes will not be available."}
