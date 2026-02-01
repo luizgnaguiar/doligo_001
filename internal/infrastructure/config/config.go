@@ -11,10 +11,10 @@ import (
 type Config struct {
 	AppEnv         string `mapstructure:"APP_ENV"`
 	Port           string `mapstructure:"PORT"`
-	Database       DatabaseConfig
-	Log            LogConfig
-	InternalWorker InternalWorkerConfig
-	Auth           AuthConfig
+	Database       DatabaseConfig `mapstructure:",squash"`
+	Log            LogConfig      `mapstructure:",squash"`
+	InternalWorker InternalWorkerConfig `mapstructure:",squash"`
+	JWT            AuthConfig     `mapstructure:",squash"`
 }
 
 // DatabaseConfig holds database-related configuration

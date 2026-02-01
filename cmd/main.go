@@ -24,6 +24,7 @@ import (
 		"doligo_001/internal/usecase/auth"
 		item_uc "doligo_001/internal/usecase/item"
 		thirdparty_uc "doligo_001/internal/usecase/thirdparty"
+		stock_uc "doligo_001/internal/usecase/stock"
 	)
 	
 	func main() {
@@ -77,11 +78,18 @@ import (
 		authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24)
 		thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
 		itemUsecase := item_uc.NewUsecase(itemRepo)
+
+		// Initialize transaction manager
+		txManager := db.NewGormTransactioner(gormDB)
+
+		// Initialize stock use case
+		stockUsecase := stock_uc.NewUseCase(gormDB, txManager)
 	
 		// Initialize handlers
 		authHandler := handlers.NewAuthHandler(authUsecase)
 		thirdPartyHandler := handlers.NewThirdPartyHandler(thirdPartyUsecase)
 		itemHandler := handlers.NewItemHandler(itemUsecase)
+		stockHandler := handlers.NewStockHandler(stockUsecase)
 	
 		// Setup Echo
 		e := echo.New()
@@ -105,7 +113,8 @@ import (
 		
 			// Register authenticated routes
 			thirdPartyHandler.RegisterRoutes(v1.Group("/thirdparties"))
-			itemHandler.RegisterRoutes(v1.Group("/items"))	
+			itemHandler.RegisterRoutes(v1.Group("/items"))
+			stockHandler.RegisterRoutes(v1.Group("")) // stock handler registers sub-groups
 	
 		// Start server in a goroutine
 		go func() {

@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"embed"
 	"fmt"
 	"log"
 
@@ -10,14 +9,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/mysql" // Import for MySQL driver
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import for PostgreSQL driver
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"doligo_001/internal/infrastructure"
 )
-
-//go:embed ../migrations/*.sql
-var fs embed.FS
 
 // RunMigrations applies database migrations
 func RunMigrations(db *sql.DB, dbType, dsn string) error {
-	sourceDriver, err := iofs.New(fs, "../migrations")
+	sourceDriver, err := iofs.New(infrastructure.MigrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("failed to create migration source driver: %w", err)
 	}

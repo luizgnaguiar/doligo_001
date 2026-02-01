@@ -94,3 +94,72 @@ type Item struct {
 	CreatedByUser User `gorm:"foreignKey:CreatedBy"`
 	UpdatedByUser User `gorm:"foreignKey:UpdatedBy"`
 }
+
+// Warehouse model represents the database schema for a stock warehouse.
+type Warehouse struct {
+	BaseModel
+	Name     string `gorm:"size:255;not null;uniqueIndex"`
+	IsActive bool   `gorm:"default:true"`
+	Bins     []Bin  `gorm:"foreignKey:WarehouseID"`
+}
+
+// Bin model represents a specific storage bin within a warehouse.
+type Bin struct {
+	BaseModel
+	Name        string    `gorm:"size:255;not null"`
+	WarehouseID uuid.UUID `gorm:"type:uuid;not null"`
+	Warehouse   Warehouse `gorm:"foreignKey:WarehouseID"`
+	IsActive    bool      `gorm:"default:true"`
+}
+
+// Stock model represents the current quantity of an item at a specific location.
+// It serves as the single source of truth for current inventory levels.
+type Stock struct {
+	ItemID      uuid.UUID `gorm:"type:uuid;primaryKey"`
+	WarehouseID uuid.UUID `gorm:"type:uuid;primaryKey"`
+	BinID       uuid.UUID `gorm:"type:uuid;primaryKey;default:'00000000-0000-0000-0000-000000000000'"` // Use a zero UUID for non-binned stock
+	Quantity    float64   `gorm:"type:numeric(15,4);not null;default:0.0"`
+	UpdatedAt   time.Time
+	Item        Item      `gorm:"foreignKey:ItemID"`
+	Warehouse   Warehouse `gorm:"foreignKey:WarehouseID"`
+	Bin         Bin       `gorm:"foreignKey:BinID"`
+}
+
+// StockMovement model represents a record of stock moving in or out.
+type StockMovement struct {
+	ID          uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ItemID      uuid.UUID  `gorm:"type:uuid;not null;index"`
+	WarehouseID uuid.UUID  `gorm:"type:uuid;not null;index"`
+	BinID       *uuid.UUID `gorm:"type:uuid;index"`
+	Type        string     `gorm:"size:10;not null"` // 'IN' or 'OUT'
+	Quantity    float64    `gorm:"type:numeric(15,4);not null"`
+	Reason      string     `gorm:"size:255"`
+	HappenedAt  time.Time  `gorm:"not null"`
+	CreatedBy   uuid.UUID  `gorm:"type:uuid"`
+	Item        Item       `gorm:"foreignKey:ItemID"`
+	Warehouse   Warehouse  `gorm:"foreignKey:WarehouseID"`
+	Bin         *Bin       `gorm:"foreignKey:BinID"`
+	CreatedByUser User     `gorm:"foreignKey:CreatedBy"`
+}
+
+// StockLedger model is an immutable, append-only log of all stock transactions.
+type StockLedger struct {
+	ID              uuid.UUID     `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	StockMovementID uuid.UUID     `gorm:"type:uuid;not null;index"`
+	ItemID          uuid.UUID     `gorm:"type:uuid;not null;index"`
+	WarehouseID     uuid.UUID     `gorm:"type:uuid;not null;index"`
+	BinID           *uuid.UUID    `gorm:"type:uuid;index"`
+	MovementType    string        `gorm:"size:10;not null"`
+	QuantityChange  float64       `gorm:"type:numeric(15,4);not null"`
+	QuantityBefore  float64       `gorm:"type:numeric(15,4);not null"`
+	QuantityAfter   float64       `gorm:"type:numeric(15,4);not null"`
+	Reason          string        `gorm:"size:255"`
+	HappenedAt      time.Time     `gorm:"not null"`
+	RecordedAt      time.Time     `gorm:"not null;default:now()"`
+	RecordedBy      uuid.UUID     `gorm:"type:uuid"`
+	Item            Item          `gorm:"foreignKey:ItemID"`
+	Warehouse       Warehouse     `gorm:"foreignKey:WarehouseID"`
+	Bin             *Bin          `gorm:"foreignKey:BinID"`
+	RecordedByUser  User          `gorm:"foreignKey:RecordedBy"`
+	StockMovement   StockMovement `gorm:"foreignKey:StockMovementID"`
+}
