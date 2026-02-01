@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"doligo/internal/domain" // Assuming domain is the package where Auditable is defined
 )
 
 // BillOfMaterials represents the definition of how to produce a finished item.

@@ -3,11 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
-	"time"
-
-	"doligo/internal/domain"
-	"doligo/internal/domain/bom"
-	"doligo/internal/infrastructure/db/models"
+	"doligo_001/internal/domain/bom"
+	"doligo_001/internal/infrastructure/db/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )

@@ -18,7 +18,7 @@ import (
 	"doligo_001/internal/infrastructure/db"
 	"doligo_001/internal/infrastructure/logger"
 	"doligo_001/internal/infrastructure/repository"
-	"doligo_001/internal/api"
+	"doligo_001/internal/api/validator"
 	"doligo_001/internal/api/handlers"
 	apiMiddleware "doligo_001/internal/api/middleware"
 	"doligo_001/internal/usecase/auth"
@@ -81,10 +81,7 @@ func main() {
 	txManager := db.NewGormTransactioner(gormDB)
 
 	// Initialize stock repositories
-	stockRepo := repository.NewGormStockRepository(gormDB)
-	stockMovementRepo := repository.NewGormStockMovementRepository(gormDB)
-	stockLedgerRepo := repository.NewGormStockLedgerRepository(gormDB)
-	productionRecordRepo := repository.NewGormProductionRecordRepository(gormDB)
+
 
 	// Initialize Worker Pool for PDF generation
 	// These values (workers, buffer) should ideally come from configuration.
@@ -96,28 +93,20 @@ func main() {
 	thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
 	itemUsecase := item_uc.NewUsecase(itemRepo)
 	stockUsecase := stock_uc.NewUseCase(gormDB, txManager)
-	bomUsecase := bom_uc.NewBOMUsecase(
-		bomRepo,
-		itemRepo,
-		stockRepo,
-		stockMovementRepo,
-		stockLedgerRepo,
-		productionRecordRepo,
-		txManager,
-	)
-	marginUsecase := margin_uc.NewUsecase(marginRepo) // Initialize margin usecase
+	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
+	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)
-	thirdPartyHandler := handlers.NewThirdPartyHandler(thirdpartyUsecase)
+	thirdPartyHandler := handlers.NewThirdPartyHandler(thirdPartyUsecase)
 	itemHandler := handlers.NewItemHandler(itemUsecase)
 	stockHandler := handlers.NewStockHandler(stockUsecase)
-	bomHandler := handlers.NewBOMHandler(bomUsecase, api.NewValidator())
+	bomHandler := handlers.NewBOMHandler(bomUsecase, validator.NewValidator())
 	marginHandler := handlers.NewMarginHandler(marginUsecase) // Initialize margin handler
 
 	// Setup Echo
 	e := echo.New()
-	e.Validator = api.NewValidator()
+	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
 
 	// Register public routes

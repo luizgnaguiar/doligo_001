@@ -1,27 +1,26 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"time"
 
-	"doligo/internal/api/dto"
-	"doligo/internal/api/validator"
-	"doligo/internal/domain" // For domain.UserIDFromContext
-	"doligo/internal/domain/bom"
-	bomUseCase "doligo/internal/usecase/bom" // Alias to avoid conflict with domain.bom
+	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/validator"
+	"doligo_001/internal/domain" // For domain.UserIDFromContext
+	"doligo_001/internal/domain/bom"
+	bomUseCase "doligo_001/internal/usecase/bom" // Alias to avoid conflict with domain.bom
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 // BOMHandler handles HTTP requests related to Bill of Materials.
 type BOMHandler struct {
-	bomUsecase *bomUseCase.BOMUsecase
+	bomUsecase bomUseCase.BOMUsecase
 	validator  *validator.CustomValidator
 }
 
 // NewBOMHandler creates a new BOMHandler.
-func NewBOMHandler(bu *bomUseCase.BOMUsecase, v *validator.CustomValidator) *BOMHandler {
+func NewBOMHandler(bu bomUseCase.BOMUsecase, v *validator.CustomValidator) *BOMHandler {
 	return &BOMHandler{
 		bomUsecase: bu,
 		validator:  v,
@@ -243,8 +242,8 @@ func (h *BOMHandler) ProduceItem(c echo.Context) error {
 		c.Request().Context(),
 		req.BOMID,
 		req.WarehouseID,
-		req.ProductionQuantity,
 		userID,
+		req.ProductionQuantity,
 	)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

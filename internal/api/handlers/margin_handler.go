@@ -8,22 +8,17 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"doligo_001/internal/api/dto"
-	"doligo_001/internal/usecase/margin"
+	domainMargin "doligo_001/internal/domain/margin" // Alias for domain margin
+	marginUseCase "doligo_001/internal/usecase/margin" // Alias for usecase margin
 )
-
-// MarginUsecase defines the interface for margin-related business logic.
-type MarginUsecase interface {
-	GetProductMarginReport(ctx echo.Context, productID uuid.UUID, startDate, endDate time.Time) (*margin.MarginReport, error)
-	ListOverallMarginReports(ctx echo.Context, startDate, endDate time.Time) ([]*margin.MarginReport, error)
-}
 
 // MarginHandler handles HTTP requests related to margin reports.
 type MarginHandler struct {
-	marginUsecase MarginUsecase
+	marginUsecase marginUseCase.MarginUsecase
 }
 
 // NewMarginHandler creates a new MarginHandler.
-func NewMarginHandler(mu MarginUsecase) *MarginHandler {
+func NewMarginHandler(mu marginUseCase.MarginUsecase) *MarginHandler {
 	return &MarginHandler{marginUsecase: mu}
 }
 
@@ -36,7 +31,7 @@ func NewMarginHandler(mu MarginUsecase) *MarginHandler {
 // @Param productID path string true "Product ID" Format(uuid)
 // @Param startDate query string true "Start date for the report (YYYY-MM-DD)"
 // @Param endDate query string true "End date for the report (YYYY-MM-DD)"
-// @Success 200 {object} margin.MarginReport
+// @Success 200 {object} domainMargin.MarginReport
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
 // @Router /margin/products/{productID} [get]
@@ -78,7 +73,7 @@ func (h *MarginHandler) GetProductMarginReport(c echo.Context) error {
 // @Produce json
 // @Param startDate query string true "Start date for the report (YYYY-MM-DD)"
 // @Param endDate query string true "End date for the report (YYYY-MM-DD)"
-// @Success 200 {array} margin.MarginReport
+// @Success 200 {array} domainMargin.MarginReport
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
 // @Router /margin [get]
@@ -100,7 +95,7 @@ func (h *MarginHandler) ListOverallMarginReports(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve overall margin reports", Details: err.Error()})
 	}
 	if reports == nil {
-		return c.JSON(http.StatusOK, []margin.MarginReport{}) // Return empty array instead of null
+		return c.JSON(http.StatusOK, []domainMargin.MarginReport{}) // Return empty array instead of null
 	}
 
 	return c.JSON(http.StatusOK, reports)
