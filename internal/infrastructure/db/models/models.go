@@ -161,5 +161,44 @@ type StockLedger struct {
 	Warehouse       Warehouse     `gorm:"foreignKey:WarehouseID"`
 	Bin             *Bin          `gorm:"foreignKey:BinID"`
 	RecordedByUser  User          `gorm:"foreignKey:RecordedBy"`
-	StockMovement   StockMovement `gorm:"foreignKey:StockMovementID"`
+	StockMovement StockMovement `gorm:"foreignKey:StockMovementID"`
 }
+
+// BillOfMaterials model represents the definition of how to produce a finished item.
+type BillOfMaterials struct {
+	BaseModel
+	ProductID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex"` // The finished item produced by this BOM
+	Product   Item      `gorm:"foreignKey:ProductID"`
+	Name      string    `gorm:"size:255;not null"`
+	IsActive  bool      `gorm:"default:true"`
+	Components []BillOfMaterialsComponent `gorm:"foreignKey:BillOfMaterialsID"`
+}
+
+// BillOfMaterialsComponent model represents a single ingredient (item or service) in a BOM.
+type BillOfMaterialsComponent struct {
+	BaseModel
+	BillOfMaterialsID uuid.UUID `gorm:"type:uuid;not null"`
+	BillOfMaterials   BillOfMaterials `gorm:"foreignKey:BillOfMaterialsID"`
+	ComponentItemID   uuid.UUID `gorm:"type:uuid;not null"` // The item (input or service) that is a component
+	ComponentItem     Item      `gorm:"foreignKey:ComponentItemID"`
+	Quantity          float64   `gorm:"type:numeric(15,4);not null"`
+	UnitOfMeasure     string    `gorm:"size:50;not null"` // e.g., "kg", "pcs", "hours"
+	IsActive          bool      `gorm:"default:true"`
+}
+
+// ProductionRecord model represents a completed production run based on a BOM.
+type ProductionRecord struct {
+	ID                    uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	BillOfMaterialsID     uuid.UUID `gorm:"type:uuid;not null"`
+	BillOfMaterials       BillOfMaterials `gorm:"foreignKey:BillOfMaterialsID"`
+	ProducedProductID     uuid.UUID `gorm:"type:uuid;not null"` // The finished product item ID
+	ProducedProduct       Item      `gorm:"foreignKey:ProducedProductID"`
+	ProductionQuantity    float64   `gorm:"type:numeric(15,4);not null"`
+	ActualProductionCost  float64   `gorm:"type:numeric(15,4);not null"`
+	WarehouseID           uuid.UUID `gorm:"type:uuid;not null"`
+	Warehouse             Warehouse `gorm:"foreignKey:WarehouseID"`
+	ProducedAt            time.Time `gorm:"not null"`
+	CreatedBy             uuid.UUID `gorm:"type:uuid"` // Who initiated the production
+	CreatedByUser         User      `gorm:"foreignKey:CreatedBy"`
+}
+
