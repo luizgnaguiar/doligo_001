@@ -1,19 +1,25 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"log"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/mysql" // Import for MySQL driver
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import for PostgreSQL driver
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/rs/zerolog/log"
+
 	"doligo_001/internal/infrastructure"
 )
 
 // RunMigrations applies database migrations
-func RunMigrations(db *sql.DB, dbType, dsn string) error {
+func RunMigrations(ctx context.Context, db *sql.DB, dbType, dsn string) error {
+	// Although the context is passed, the golang-migrate library's Up() method
+	// does not directly accept a context. The context's primary role here is
+	// to signal overall application shutdown; however, its direct effect on
+	// the migration process itself is limited by the library's API.
 	sourceDriver, err := iofs.New(infrastructure.MigrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("failed to create migration source driver: %w", err)
@@ -33,9 +39,9 @@ func RunMigrations(db *sql.DB, dbType, dsn string) error {
 	}
 
 	if err == migrate.ErrNoChange {
-		log.Println("No migrations to apply.")
+		log.Debug().Msg("No migrations to apply.")
 	} else {
-		log.Println("Database migrations applied successfully.")
+		log.Info().Msg("Database migrations applied successfully.")
 	}
 
 	return nil

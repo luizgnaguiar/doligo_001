@@ -32,10 +32,10 @@ import (
 )
 
 // initServices initializes database-dependent services and returns the db connection
-func initServices(cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
+func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
 	log.Info().Msg("Starting database and services initialization...")
 
-	gormDB, dsn, err := db.InitDatabase(&cfg.Database)
+	gormDB, dsn, err := db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func initServices(cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err := db.RunMigrations(sqlDB, cfg.Database.Type, dsn); err != nil {
+	if err := db.RunMigrations(ctx, sqlDB, cfg.Database.Type, dsn); err != nil {
 		log.Error().Err(err).Msg("Failed to run database migrations.")
 		// Depending on the policy, you might want to return an error here
 	} else {
@@ -142,7 +142,7 @@ func main() {
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
 
-	gormDB, err := initServices(cfg, e)
+	gormDB, err := initServices(ctx, cfg, e)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize services")
 	}

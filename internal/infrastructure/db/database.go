@@ -1,20 +1,19 @@
 package db
 
 import (
+	"context"
 	"fmt"
-	"log"
 
+	"github.com/rs/zerolog/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"context"
 	"doligo_001/internal/infrastructure/config"
-	"time"
 )
 
 // InitDatabase initializes and returns a GORM database connection
-func InitDatabase(cfg *config.DatabaseConfig) (*gorm.DB, string, error) {
+func InitDatabase(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, string, error) {
 	var dialector gorm.Dialector
 	dsn := ""
 
@@ -47,12 +46,11 @@ func InitDatabase(cfg *config.DatabaseConfig) (*gorm.DB, string, error) {
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	// Ping the database to verify connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// Use the provided context for the ping
 	if err = sqlDB.PingContext(ctx); err != nil {
 		return nil, "", fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Printf("Database connection established for %s", cfg.Type)
+	log.Debug().Msgf("Database connection established for %s", cfg.Type)
 	return db, dsn, nil
 }
