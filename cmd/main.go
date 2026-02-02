@@ -22,8 +22,8 @@ import (
 	"doligo_001/internal/infrastructure/config"
 	"doligo_001/internal/infrastructure/db"
 	"doligo_001/internal/infrastructure/logger"
+	"doligo_001/internal/infrastructure/pdf"
 	"doligo_001/internal/infrastructure/repository"
-	"doligo_001/internal/infrastructure/worker"
 	"doligo_001/internal/usecase/auth"
 	bom_uc "doligo_001/internal/usecase/bom"
 	invoice_uc "doligo_001/internal/usecase/invoice"
@@ -75,6 +75,9 @@ func initServices(cfg *config.Config) {
 		log.Info().Msg("Database migrations completed successfully.")
 	}
 
+	// Initialize PDF generator
+	pdfGenerator := pdf.NewMarotoGenerator()
+
 	// Initialize repositories, usecases, and handlers
 	userRepo := repository.NewGormUserRepository(gormDB)
 	thirdPartyRepo := repository.NewGormThirdPartyRepository(gormDB)
@@ -89,7 +92,7 @@ func initServices(cfg *config.Config) {
 	stockUsecase := stock_uc.NewUseCase(gormDB, txManager)
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
-	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo)
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator)
 
 	newServices := &serviceRegistry{
 		authHandler:       handlers.NewAuthHandler(authUsecase),
@@ -118,9 +121,6 @@ func main() {
 
 	log.Info().Msgf("Application Environment: %s", cfg.AppEnv)
 	log.Info().Msgf("Listening on Port: %s", cfg.Port)
-
-	pdfWorkerPool := worker.NewWorkerPool(5, 10, "PDFGenerator")
-	log.Info().Msg("PDF Worker Pool initialized.")
 
 	e := echo.New()
 	e.Validator = validator.NewValidator()
@@ -182,6 +182,7 @@ func main() {
 	invoiceGroup := v1.Group("/invoices")
 	invoiceGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.CreateInvoice(c) }))
 	invoiceGroup.GET("/:id", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.GetInvoice(c) }))
+	invoiceGroup.GET("/:id/pdf", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.GenerateInvoicePDF(c) }))
 
 	// Start DB initialization in the background
 	go initServices(cfg)
@@ -197,7 +198,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Info().Msg("Shutting down server and PDF Worker Pool...")
+	log.Info().Msg("Shutting down server...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -206,7 +207,5 @@ func main() {
 		log.Error().Err(err).Msg("Server forced to shutdown")
 	}
 
-	pdfWorkerPool.Shutdown(15 * time.Second)
-
-	log.Info().Msg("Server and PDF Worker Pool gracefully stopped.")
+	log.Info().Msg("Server gracefully stopped.")
 }

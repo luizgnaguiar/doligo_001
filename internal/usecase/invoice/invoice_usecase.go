@@ -2,29 +2,29 @@ package invoice
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"doligo_001/internal/api/dto"
 	"doligo_001/internal/domain"
 	"doligo_001/internal/domain/invoice"
+	"doligo_001/internal/infrastructure/pdf"
 	item_usecase "doligo_001/internal/usecase/item"
-)
 
-type Usecase interface {
-	Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
-}
+	"github.com/google/uuid"
+)
 
 type usecase struct {
 	invoiceRepo Repository
 	itemRepo    item_usecase.Repository
+	pdfGen      pdf.Generator
 }
 
-func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository) Usecase {
+func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator) Usecase {
 	return &usecase{
 		invoiceRepo: invoiceRepo,
 		itemRepo:    itemRepo,
+		pdfGen:      pdfGen,
 	}
 }
 
@@ -68,7 +68,7 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 
 	newInvoice.TotalAmount = totalAmount
 	newInvoice.TotalCost = totalCost
-	
+
 	newInvoice.SetCreatedBy(userID)
 	newInvoice.SetUpdatedBy(userID)
 
@@ -82,4 +82,23 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 
 func (u *usecase) GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error) {
 	return u.invoiceRepo.FindByID(ctx, id)
+}
+
+func (u *usecase) GenerateInvoicePDF(ctx context.Context, invoiceID uuid.UUID) ([]byte, string, error) {
+	// 1. Fetch the full invoice data
+	inv, err := u.invoiceRepo.FindByIDWithDetails(ctx, invoiceID)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to find invoice: %w", err)
+	}
+
+	// 2. Generate the PDF
+	pdfBytes, err := u.pdfGen.Generate(ctx, inv)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	// 3. Create a filename
+	filename := fmt.Sprintf("invoice-%s.pdf", inv.Number)
+
+	return pdfBytes, filename, nil
 }

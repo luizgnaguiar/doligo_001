@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -47,4 +49,24 @@ func (h *InvoiceHandler) GetInvoice(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, inv)
+}
+
+func (h *InvoiceHandler) GenerateInvoicePDF(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid ID")
+	}
+
+	pdfBytes, filename, err := h.usecase.GenerateInvoicePDF(c.Request().Context(), id)
+	if err != nil {
+		// Consider more specific error handling (e.g., not found vs. internal error)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to generate PDF: %v", err))
+	}
+
+	// Set headers to prompt download
+	c.Response().Header().Set(echo.HeaderContentType, "application/pdf")
+	disposition := fmt.Sprintf("attachment; filename*=UTF-8''%s", url.QueryEscape(filename))
+	c.Response().Header().Set(echo.HeaderContentDisposition, disposition)
+
+	return c.Blob(http.StatusOK, "application/pdf", pdfBytes)
 }

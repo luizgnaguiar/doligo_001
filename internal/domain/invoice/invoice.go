@@ -2,13 +2,14 @@ package invoice
 
 import (
 	"time"
-
+	"doligo_001/internal/domain/thirdparty"
 	"github.com/google/uuid"
 )
 
 type Invoice struct {
 	ID              uuid.UUID
 	ThirdPartyID    uuid.UUID
+	ThirdParty      *thirdparty.ThirdParty `gorm:"foreignKey:ThirdPartyID"`
 	Number          string
 	Date            time.Time
 	TotalAmount     float64
