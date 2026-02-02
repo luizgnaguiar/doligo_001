@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
-
-	stdlog "log"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -33,52 +31,31 @@ import (
 	thirdparty_uc "doligo_001/internal/usecase/thirdparty"
 )
 
-// serviceRegistry holds all the application's handlers.
-// It's designed to be populated after the database is ready.
-type serviceRegistry struct {
-	authHandler       *handlers.AuthHandler
-	thirdPartyHandler *handlers.ThirdPartyHandler
-	itemHandler       *handlers.ItemHandler
-	stockHandler      *handlers.StockHandler
-	bomHandler        *handlers.BOMHandler
-	marginHandler     *handlers.MarginHandler
-	invoiceHandler    *handlers.InvoiceHandler
-}
-
-// appState holds the service registry and a mutex to control access.
-var appState struct {
-	sync.RWMutex
-	services *serviceRegistry
-}
-
-// initServices initializes database-dependent services and populates the appState.
-func initServices(cfg *config.Config) {
+// initServices initializes database-dependent services and returns the db connection
+func initServices(cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
 	log.Info().Msg("Starting database and services initialization...")
 
-	var gormDB *gorm.DB
 	gormDB, dsn, err := db.InitDatabase(&cfg.Database)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize database. Service routes will not be available.")
-		return
+		return nil, err
 	}
 	log.Info().Msg("Database connection established.")
 
 	sqlDB, err := gormDB.DB()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get generic database object from GORM. Service routes will not be available.")
-		return
+		return nil, err
 	}
 
 	if err := db.RunMigrations(sqlDB, cfg.Database.Type, dsn); err != nil {
-		log.Error().Err(err).Msg("Failed to run database migrations. Service routes may not work correctly.")
+		log.Error().Err(err).Msg("Failed to run database migrations.")
+		// Depending on the policy, you might want to return an error here
 	} else {
 		log.Info().Msg("Database migrations completed successfully.")
 	}
 
-	// Initialize PDF generator
 	pdfGenerator := pdf.NewMarotoGenerator()
 
-	// Initialize repositories, usecases, and handlers
+	// Repositories
 	userRepo := repository.NewGormUserRepository(gormDB)
 	thirdPartyRepo := repository.NewGormThirdPartyRepository(gormDB)
 	itemRepo := repository.NewGormItemRepository(gormDB)
@@ -86,6 +63,8 @@ func initServices(cfg *config.Config) {
 	marginRepo := repository.NewGormMarginRepository(gormDB)
 	invoiceRepo := repository.NewInvoiceRepository(gormDB)
 	txManager := db.NewGormTransactioner(gormDB)
+
+	// Usecases
 	authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24)
 	thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
 	itemUsecase := item_uc.NewUsecase(itemRepo)
@@ -94,117 +73,114 @@ func initServices(cfg *config.Config) {
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator)
 
-	newServices := &serviceRegistry{
-		authHandler:       handlers.NewAuthHandler(authUsecase),
-		thirdPartyHandler: handlers.NewThirdPartyHandler(thirdPartyUsecase),
-		itemHandler:       handlers.NewItemHandler(itemUsecase),
-		stockHandler:      handlers.NewStockHandler(stockUsecase),
-		bomHandler:        handlers.NewBOMHandler(bomUsecase, validator.NewValidator()),
-		marginHandler:     handlers.NewMarginHandler(marginUsecase),
-		invoiceHandler:    handlers.NewInvoiceHandler(invoiceUsecase),
-	}
+	// Handlers
+	authHandler := handlers.NewAuthHandler(authUsecase)
+	thirdPartyHandler := handlers.NewThirdPartyHandler(thirdPartyUsecase)
+	itemHandler := handlers.NewItemHandler(itemUsecase)
+	stockHandler := handlers.NewStockHandler(stockUsecase)
+	bomHandler := handlers.NewBOMHandler(bomUsecase, validator.NewValidator())
+	marginHandler := handlers.NewMarginHandler(marginUsecase)
+	invoiceHandler := handlers.NewInvoiceHandler(invoiceUsecase)
 
-	// Atomically update the app state with the new services
-	appState.Lock()
-	defer appState.Unlock()
-	appState.services = newServices
+	// Register routes
+	e.GET("/health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
+	e.POST("/login", authHandler.Login)
 
-	log.Info().Msg("All database-dependent services initialized and are now available.")
+	v1 := e.Group("/api/v1")
+	jwtMiddleware := &apiMiddleware.JWTConfig{Secret: []byte(cfg.JWT.JWTSecret)}
+	v1.Use(jwtMiddleware.JWT)
+
+	thirdpartiesGroup := v1.Group("/thirdparties")
+	thirdpartiesGroup.POST("", thirdPartyHandler.Create)
+	thirdpartiesGroup.GET("", thirdPartyHandler.List)
+
+	itemsGroup := v1.Group("/items")
+	itemsGroup.POST("", itemHandler.Create)
+	itemsGroup.GET("", itemHandler.List)
+
+	v1.POST("/stock/movements", stockHandler.CreateStockMovement)
+
+	bomGroup := v1.Group("/boms")
+	bomGroup.POST("", bomHandler.CreateBOM)
+	bomGroup.GET("/:id", bomHandler.GetBOMByID)
+	bomGroup.GET("/product/:productID", bomHandler.GetBOMByProductID)
+	bomGroup.GET("", bomHandler.ListBOMs)
+	bomGroup.PUT("/:id", bomHandler.UpdateBOM)
+	bomGroup.DELETE("/:id", bomHandler.DeleteBOM)
+	bomGroup.POST("/calculate-cost", bomHandler.CalculatePredictiveCost)
+	bomGroup.POST("/produce", bomHandler.ProduceItem)
+
+	marginGroup := v1.Group("/margin")
+	marginGroup.GET("/products/:productID", marginHandler.GetProductMarginReport)
+	marginGroup.GET("", marginHandler.ListOverallMarginReports)
+
+	invoiceGroup := v1.Group("/invoices")
+	invoiceGroup.POST("", invoiceHandler.CreateInvoice)
+	invoiceGroup.GET("/:id", invoiceHandler.GetInvoice)
+	invoiceGroup.GET("/:id/pdf", invoiceHandler.GenerateInvoicePDF)
+
+	log.Info().Msg("All services initialized and routes registered.")
+	return gormDB, nil
 }
 
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		stdlog.Fatalf("Error loading configuration: %v", err)
+		log.Fatal().Err(err).Msg("Error loading configuration")
 	}
 	logger.InitLogger(cfg.Log.Level)
 
 	log.Info().Msgf("Application Environment: %s", cfg.AppEnv)
-	log.Info().Msgf("Listening on Port: %s", cfg.Port)
+
+	// Create a root context that is canceled on OS signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	e := echo.New()
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
 
-	// serviceReady is a wrapper for handlers that depend on DB initialization.
-	serviceReady := func(h echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			appState.RLock()
-			isReady := appState.services != nil
-			appState.RUnlock()
-
-			if !isReady {
-				return c.String(http.StatusServiceUnavailable, "Service not ready")
-			}
-			return h(c)
-		}
+	gormDB, err := initServices(cfg, e)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize services")
 	}
 
-	// == Register Routes ==
-	// Non-dependent routes are registered directly.
-	e.GET("/health", func(c echo.Context) error {
-		return c.String(http.StatusOK, "OK")
-	})
-
-	// DB-dependent public routes
-	e.POST("/login", serviceReady(func(c echo.Context) error { return appState.services.authHandler.Login(c) }))
-
-	// API v1 Group with JWT Middleware
-	v1 := e.Group("/api/v1")
-	jwtMiddleware := &apiMiddleware.JWTConfig{Secret: []byte(cfg.JWT.JWTSecret)}
-	v1.Use(jwtMiddleware.JWT)
-
-	// Register authenticated routes using the wrapper
-	thirdpartiesGroup := v1.Group("/thirdparties")
-	thirdpartiesGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.thirdPartyHandler.Create(c) }))
-	thirdpartiesGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.thirdPartyHandler.List(c) }))
-
-	itemsGroup := v1.Group("/items")
-	itemsGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.itemHandler.Create(c) }))
-	itemsGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.itemHandler.List(c) }))
-
-	v1.POST("/stock/movements", serviceReady(func(c echo.Context) error { return appState.services.stockHandler.CreateStockMovement(c) }))
-
-	bomGroup := v1.Group("/boms")
-	bomGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.CreateBOM(c) }))
-	bomGroup.GET("/:id", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.GetBOMByID(c) }))
-	bomGroup.GET("/product/:productID", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.GetBOMByProductID(c) }))
-	bomGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.ListBOMs(c) }))
-	bomGroup.PUT("/:id", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.UpdateBOM(c) }))
-	bomGroup.DELETE("/:id", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.DeleteBOM(c) }))
-	bomGroup.POST("/calculate-cost", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.CalculatePredictiveCost(c) }))
-	bomGroup.POST("/produce", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.ProduceItem(c) }))
-
-	marginGroup := v1.Group("/margin")
-	marginGroup.GET("/products/:productID", serviceReady(func(c echo.Context) error { return appState.services.marginHandler.GetProductMarginReport(c) }))
-	marginGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.marginHandler.ListOverallMarginReports(c) }))
-
-	invoiceGroup := v1.Group("/invoices")
-	invoiceGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.CreateInvoice(c) }))
-	invoiceGroup.GET("/:id", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.GetInvoice(c) }))
-	invoiceGroup.GET("/:id/pdf", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.GenerateInvoicePDF(c) }))
-
-	// Start DB initialization in the background
-	go initServices(cfg)
-
-	// Start server
+	// Start server in a goroutine
 	go func() {
-		if err := e.Start(":" + cfg.Port); err != nil && err != http.ErrServerClosed {
+		log.Info().Msgf("Starting server on port %s", cfg.Port)
+		if err := e.Start(":" + cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error().Err(err).Msg("HTTP server failed to start")
+			stop() // trigger shutdown
 		}
 	}()
 
-	// Graceful Shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	// Wait for shutdown signal
+	<-ctx.Done()
+
 	log.Info().Msg("Shutting down server...")
 
+	// Create a context with a timeout for the shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	// Perform graceful shutdown for the HTTP server
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("Server forced to shutdown")
+	}
+
+	// Close database connection
+	if gormDB != nil {
+		sqlDB, err := gormDB.DB()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get DB instance for closing")
+		} else {
+			log.Info().Msg("Closing database connection...")
+			if err := sqlDB.Close(); err != nil {
+				log.Error().Err(err).Msg("Failed to close database connection")
+			}
+		}
 	}
 
 	log.Info().Msg("Server gracefully stopped.")
