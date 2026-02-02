@@ -2,22 +2,28 @@ package bom
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+var (
+	// ErrBOMNotFound is returned when a BillOfMaterials is not found.
+	ErrBOMNotFound = errors.New("bill of materials not found")
+)
+
 // BillOfMaterials represents the definition of how to produce a finished item.
 // It consists of components (inputs) and services required.
 type BillOfMaterials struct {
-	ID        uuid.UUID
-	ProductID uuid.UUID // The finished item produced by this BOM
-	Name      string
-	IsActive  bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	CreatedBy uuid.UUID
-	UpdatedBy uuid.UUID
+	ID         uuid.UUID
+	ProductID  uuid.UUID // The finished item produced by this BOM
+	Name       string
+	IsActive   bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	CreatedBy  uuid.UUID
+	UpdatedBy  uuid.UUID
 	Components []BillOfMaterialsComponent // Inputs needed
 }
 

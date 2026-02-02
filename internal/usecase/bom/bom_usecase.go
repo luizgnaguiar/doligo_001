@@ -32,7 +32,9 @@ func NewBOMUsecase(bomRepo domainBom.Repository) BOMUsecase {
 }
 
 func (u *bomUsecase) CreateBOM(ctx context.Context, bom *domainBom.BillOfMaterials) error {
-	return fmt.Errorf("CreateBOM not implemented")
+	// For now, we delegate directly to the repository.
+	// Business logic/validation would go here in a real implementation.
+	return u.bomRepo.Create(ctx, bom)
 }
 
 func (u *bomUsecase) GetBOMByID(ctx context.Context, id uuid.UUID) (*domainBom.BillOfMaterials, error) {
@@ -40,19 +42,27 @@ func (u *bomUsecase) GetBOMByID(ctx context.Context, id uuid.UUID) (*domainBom.B
 }
 
 func (u *bomUsecase) GetBOMByProductID(ctx context.Context, productID uuid.UUID) (*domainBom.BillOfMaterials, error) {
-	return nil, fmt.Errorf("GetBOMByProductID not implemented")
+	return u.bomRepo.GetByProductID(ctx, productID)
 }
 
 func (u *bomUsecase) ListBOMs(ctx context.Context) ([]*domainBom.BillOfMaterials, error) {
-	return nil, fmt.Errorf("ListBOMs not implemented")
+	return u.bomRepo.List(ctx)
 }
 
 func (u *bomUsecase) UpdateBOM(ctx context.Context, bom *domainBom.BillOfMaterials) error {
-	return fmt.Errorf("UpdateBOM not implemented")
+	if bom.ID == uuid.Nil {
+		return fmt.Errorf("BOM ID is required for update")
+	}
+	// For now, we delegate directly to the repository.
+	// Business logic/validation would go here in a real implementation.
+	return u.bomRepo.Update(ctx, bom)
 }
 
 func (u *bomUsecase) DeleteBOM(ctx context.Context, id uuid.UUID) error {
-	return fmt.Errorf("DeleteBOM not implemented")
+	if id == uuid.Nil {
+		return fmt.Errorf("BOM ID is required for deletion")
+	}
+	return u.bomRepo.Delete(ctx, id)
 }
 
 func (u *bomUsecase) CalculatePredictiveCost(ctx context.Context, bomID uuid.UUID) (float64, error) {

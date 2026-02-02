@@ -58,21 +58,26 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	}
 
 	pdfGenerator := pdf.NewMarotoGenerator()
+	txManager := db.NewGormTransactioner(gormDB)
 
 	// Repositories
 	userRepo := repository.NewGormUserRepository(gormDB)
 	thirdPartyRepo := repository.NewGormThirdPartyRepository(gormDB)
 	itemRepo := repository.NewGormItemRepository(gormDB)
-	bomRepo := repository.NewGormBomRepository(gormDB)
+	bomRepo := repository.NewGormBomRepository(gormDB, txManager)
 	marginRepo := repository.NewGormMarginRepository(gormDB)
 	invoiceRepo := repository.NewInvoiceRepository(gormDB)
-	txManager := db.NewGormTransactioner(gormDB)
+	stockRepo := repository.NewGormStockRepository(gormDB)
+	stockMoveRepo := repository.NewGormStockMovementRepository(gormDB)
+	stockLedgerRepo := repository.NewGormStockLedgerRepository(gormDB)
+	warehouseRepo := repository.NewGormWarehouseRepository(gormDB)
+	binRepo := repository.NewGormBinRepository(gormDB)
 
 	// Usecases
 	authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24)
 	thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
 	itemUsecase := item_uc.NewUsecase(itemRepo)
-	stockUsecase := stock_uc.NewUseCase(gormDB, txManager)
+	stockUsecase := stock_uc.NewUseCase(txManager, stockRepo, stockMoveRepo, stockLedgerRepo, warehouseRepo, binRepo, itemRepo)
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator)
