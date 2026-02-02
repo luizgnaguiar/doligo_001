@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
-	"github.com/rs/zerolog/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -46,11 +46,19 @@ func InitDatabase(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, st
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	// Ping the database to verify connection
-	// Use the provided context for the ping
 	if err = sqlDB.PingContext(ctx); err != nil {
 		return nil, "", fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Debug().Msgf("Database connection established for %s", cfg.Type)
+	slog.Debug("Database connection established", "type", cfg.Type)
 	return db, dsn, nil
+}
+
+// Ping checks the database connection.
+func Ping(ctx context.Context, db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get generic database object: %w", err)
+	}
+	return sqlDB.PingContext(ctx)
 }

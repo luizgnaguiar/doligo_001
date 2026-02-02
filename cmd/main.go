@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"doligo_001/internal/api/handlers"
@@ -33,13 +33,13 @@ import (
 
 // initServices initializes database-dependent services and returns the db connection
 func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
-	log.Info().Msg("Starting database and services initialization...")
+	slog.Info("Starting database and services initialization...")
 
 	gormDB, dsn, err := db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
 		return nil, err
 	}
-	log.Info().Msg("Database connection established.")
+	slog.Info("Database connection established.")
 
 	sqlDB, err := gormDB.DB()
 	if err != nil {
@@ -47,10 +47,10 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	}
 
 	if err := db.RunMigrations(ctx, sqlDB, cfg.Database.Type, dsn); err != nil {
-		log.Error().Err(err).Msg("Failed to run database migrations.")
+		slog.Error("Failed to run database migrations.", "error", err)
 		// Depending on the policy, you might want to return an error here
 	} else {
-		log.Info().Msg("Database migrations completed successfully.")
+		slog.Info("Database migrations completed successfully.")
 	}
 
 	pdfGenerator := pdf.NewMarotoGenerator()
@@ -86,6 +86,14 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	e.GET("/health", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
+	e.GET("/ready", func(c echo.Context) error {
+		if err := db.Ping(c.Request().Context(), gormDB); err != nil {
+			slog.Error("Readiness check failed: database ping failed", "error", err)
+			return c.String(http.StatusServiceUnavailable, "Database not ready")
+		}
+		return c.String(http.StatusOK, "Ready")
+	})
+
 	e.POST("/login", authHandler.Login)
 
 	v1 := e.Group("/api/v1")
@@ -121,18 +129,19 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	invoiceGroup.GET("/:id", invoiceHandler.GetInvoice)
 	invoiceGroup.GET("/:id/pdf", invoiceHandler.GenerateInvoicePDF)
 
-	log.Info().Msg("All services initialized and routes registered.")
+	slog.Info("All services initialized and routes registered.")
 	return gormDB, nil
 }
 
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error loading configuration")
+		slog.Error("Error loading configuration", "error", err)
+		os.Exit(1)
 	}
 	logger.InitLogger(cfg.Log.Level)
 
-	log.Info().Msgf("Application Environment: %s", cfg.AppEnv)
+	slog.Info("Application Environment", "env", cfg.AppEnv)
 
 	// Create a root context that is canceled on OS signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -141,17 +150,19 @@ func main() {
 	e := echo.New()
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
+	e.Use(apiMiddleware.RequestLogger)
 
 	gormDB, err := initServices(ctx, cfg, e)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize services")
+		slog.Error("Failed to initialize services", "error", err)
+		os.Exit(1)
 	}
 
 	// Start server in a goroutine
 	go func() {
-		log.Info().Msgf("Starting server on port %s", cfg.Port)
+		slog.Info("Starting server", "port", cfg.Port)
 		if err := e.Start(":" + cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error().Err(err).Msg("HTTP server failed to start")
+			slog.Error("HTTP server failed to start", "error", err)
 			stop() // trigger shutdown
 		}
 	}()
@@ -159,7 +170,7 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 
-	log.Info().Msg("Shutting down server...")
+	slog.Info("Shutting down server...")
 
 	// Create a context with a timeout for the shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -167,21 +178,21 @@ func main() {
 
 	// Perform graceful shutdown for the HTTP server
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("Server forced to shutdown")
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
 	// Close database connection
 	if gormDB != nil {
-		sqlDB, err := gormDB.DB()
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to get DB instance for closing")
+		sqlDB, errSql := gormDB.DB()
+		if errSql != nil {
+			slog.Error("Failed to get DB instance for closing", "error", errSql)
 		} else {
-			log.Info().Msg("Closing database connection...")
-			if err := sqlDB.Close(); err != nil {
-				log.Error().Err(err).Msg("Failed to close database connection")
+			slog.Info("Closing database connection...")
+			if errDbClose := sqlDB.Close(); errDbClose != nil {
+				slog.Error("Failed to close database connection", "error", errDbClose)
 			}
 		}
 	}
 
-	log.Info().Msg("Server gracefully stopped.")
+	slog.Info("Server gracefully stopped.")
 }
