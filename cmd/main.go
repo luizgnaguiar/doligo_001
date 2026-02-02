@@ -20,6 +20,7 @@ import (
 	"doligo_001/internal/infrastructure/config"
 	"doligo_001/internal/infrastructure/db"
 	"doligo_001/internal/infrastructure/logger"
+	"doligo_001/internal/infrastructure/metrics"
 	"doligo_001/internal/infrastructure/pdf"
 	"doligo_001/internal/infrastructure/repository"
 	"doligo_001/internal/usecase/auth"
@@ -32,18 +33,21 @@ import (
 )
 
 // initServices initializes database-dependent services and returns the db connection
-func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, error) {
+func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, *metrics.Metrics, error) {
 	slog.Info("Starting database and services initialization...")
+
+	// Metrics service
+	appMetrics := metrics.NewMetrics()
 
 	gormDB, dsn, err := db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slog.Info("Database connection established.")
 
 	sqlDB, err := gormDB.DB()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := db.RunMigrations(ctx, sqlDB, cfg.Database.Type, dsn); err != nil {
@@ -81,6 +85,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	bomHandler := handlers.NewBOMHandler(bomUsecase, validator.NewValidator())
 	marginHandler := handlers.NewMarginHandler(marginUsecase)
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceUsecase)
+	metricsHandler := handlers.NewMetricsHandler(appMetrics)
 
 	// Register routes
 	e.GET("/health", func(c echo.Context) error {
@@ -93,6 +98,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 		}
 		return c.String(http.StatusOK, "Ready")
 	})
+	e.GET("/metrics/internal", metricsHandler.GetMetrics)
 
 	e.POST("/login", authHandler.Login)
 
@@ -130,7 +136,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	invoiceGroup.GET("/:id/pdf", invoiceHandler.GenerateInvoicePDF)
 
 	slog.Info("All services initialized and routes registered.")
-	return gormDB, nil
+	return gormDB, appMetrics, nil
 }
 
 func main() {
@@ -150,13 +156,16 @@ func main() {
 	e := echo.New()
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
-	e.Use(apiMiddleware.RequestLogger)
 
-	gormDB, err := initServices(ctx, cfg, e)
+	gormDB, appMetrics, err := initServices(ctx, cfg, e)
 	if err != nil {
 		slog.Error("Failed to initialize services", "error", err)
 		os.Exit(1)
 	}
+
+	// Setup middlewares
+	e.Use(apiMiddleware.RequestLogger)
+	e.Use(apiMiddleware.MetricsMiddleware(appMetrics))
 
 	// Start server in a goroutine
 	go func() {
