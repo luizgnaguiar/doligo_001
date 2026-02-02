@@ -12,23 +12,34 @@ import (
 	"doligo_001/internal/infrastructure/logger"
 )
 
+const headerCorrelationID = "X-Correlation-ID"
+
 // RequestLogger is a middleware that provides structured logging for each HTTP request.
-// It logs the start and end of a request, including details like the request ID,
-// method, URI, status code, and latency. It also embeds a request-scoped logger
-// into the context for downstream use.
+// It creates or reuses a `correlation_id` for tracing.
+// It logs the start and end of a request, including details like the correlation ID,
+// method, URI, status code, and latency. It also embeds the correlation ID and
+// a request-scoped logger into the context for downstream use.
 func RequestLogger(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// Start timer
 		start := time.Now()
 
-		// Generate a unique request ID
-		reqID := uuid.New().String()
-		c.Response().Header().Set(echo.HeaderXRequestID, reqID)
+		// Get or generate correlation ID
+		correlationID := c.Request().Header.Get(headerCorrelationID)
+		if correlationID == "" {
+			correlationID = uuid.New().String()
+		}
 
-		// Create a logger with the request ID and embed it in the context
-		requestLogger := slog.With("request_id", reqID)
+		// Set correlation ID on the response header
+		c.Response().Header().Set(headerCorrelationID, correlationID)
+
+		// Create a logger with the correlation ID and embed it in the context
+		requestLogger := slog.With("correlation_id", correlationID)
 		ctx := logger.ToContext(c.Request().Context(), requestLogger)
-		c.SetRequest(c.Request().WithContext(ctx))
+
+		// Add correlation ID to context for propagation
+		ctxWithCorrelation := ToContext(ctx, correlationID)
+		c.SetRequest(c.Request().WithContext(ctxWithCorrelation))
 
 		requestLogger.Info("Request started",
 			"method", c.Request().Method,
@@ -57,7 +68,7 @@ func RequestLogger(next echo.HandlerFunc) echo.HandlerFunc {
 			logLevel = slog.LevelWarn
 		}
 
-		requestLogger.Log(ctx, logLevel, "Request completed",
+		requestLogger.Log(ctxWithCorrelation, logLevel, "Request completed",
 			"method", c.Request().Method,
 			"uri", c.Request().RequestURI,
 			"status", status,
