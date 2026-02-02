@@ -202,3 +202,30 @@ type ProductionRecord struct {
 	CreatedByUser         User      `gorm:"foreignKey:CreatedBy"`
 }
 
+// Invoice model represents the database schema for a sales or purchase invoice.
+type Invoice struct {
+	BaseModel
+	ThirdPartyID uuid.UUID  `gorm:"type:uuid;not null;index"`
+	ThirdParty   ThirdParty `gorm:"foreignKey:ThirdPartyID"`
+	Number       string     `gorm:"size:100;not null;uniqueIndex"`
+	Date         time.Time  `gorm:"not null"`
+	TotalAmount  float64    `gorm:"type:numeric(15,4);not null"`
+	TotalCost    float64    `gorm:"type:numeric(15,4);not null"`
+	Lines        []InvoiceLine `gorm:"foreignKey:InvoiceID"`
+}
+
+// InvoiceLine model represents a single line item within an invoice.
+type InvoiceLine struct {
+	BaseModel
+	InvoiceID   uuid.UUID `gorm:"type:uuid;not null;index"`
+	Invoice     Invoice   `gorm:"foreignKey:InvoiceID"`
+	ItemID      uuid.UUID `gorm:"type:uuid;not null;index"`
+	Item        Item      `gorm:"foreignKey:ItemID"`
+	Description string    `gorm:"size:255;not null"`
+	Quantity    float64   `gorm:"type:numeric(15,4);not null"`
+	UnitPrice   float64   `gorm:"type:numeric(15,4);not null"`
+	UnitCost    float64   `gorm:"type:numeric(15,4);not null"`
+	TotalAmount float64   `gorm:"type:numeric(15,4);not null"`
+	TotalCost   float64   `gorm:"type:numeric(15,4);not null"`
+}
+

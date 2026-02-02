@@ -26,6 +26,7 @@ import (
 	"doligo_001/internal/infrastructure/worker"
 	"doligo_001/internal/usecase/auth"
 	bom_uc "doligo_001/internal/usecase/bom"
+	invoice_uc "doligo_001/internal/usecase/invoice"
 	item_uc "doligo_001/internal/usecase/item"
 	margin_uc "doligo_001/internal/usecase/margin"
 	stock_uc "doligo_001/internal/usecase/stock"
@@ -41,6 +42,7 @@ type serviceRegistry struct {
 	stockHandler      *handlers.StockHandler
 	bomHandler        *handlers.BOMHandler
 	marginHandler     *handlers.MarginHandler
+	invoiceHandler    *handlers.InvoiceHandler
 }
 
 // appState holds the service registry and a mutex to control access.
@@ -79,6 +81,7 @@ func initServices(cfg *config.Config) {
 	itemRepo := repository.NewGormItemRepository(gormDB)
 	bomRepo := repository.NewGormBomRepository(gormDB)
 	marginRepo := repository.NewGormMarginRepository(gormDB)
+	invoiceRepo := repository.NewInvoiceRepository(gormDB)
 	txManager := db.NewGormTransactioner(gormDB)
 	authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24)
 	thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
@@ -86,7 +89,8 @@ func initServices(cfg *config.Config) {
 	stockUsecase := stock_uc.NewUseCase(gormDB, txManager)
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
-	
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo)
+
 	newServices := &serviceRegistry{
 		authHandler:       handlers.NewAuthHandler(authUsecase),
 		thirdPartyHandler: handlers.NewThirdPartyHandler(thirdPartyUsecase),
@@ -94,6 +98,7 @@ func initServices(cfg *config.Config) {
 		stockHandler:      handlers.NewStockHandler(stockUsecase),
 		bomHandler:        handlers.NewBOMHandler(bomUsecase, validator.NewValidator()),
 		marginHandler:     handlers.NewMarginHandler(marginUsecase),
+		invoiceHandler:    handlers.NewInvoiceHandler(invoiceUsecase),
 	}
 
 	// Atomically update the app state with the new services
@@ -134,7 +139,7 @@ func main() {
 			return h(c)
 		}
 	}
-	
+
 	// == Register Routes ==
 	// Non-dependent routes are registered directly.
 	e.GET("/health", func(c echo.Context) error {
@@ -148,18 +153,18 @@ func main() {
 	v1 := e.Group("/api/v1")
 	jwtMiddleware := &apiMiddleware.JWTConfig{Secret: []byte(cfg.JWT.JWTSecret)}
 	v1.Use(jwtMiddleware.JWT)
-	
+
 	// Register authenticated routes using the wrapper
 	thirdpartiesGroup := v1.Group("/thirdparties")
 	thirdpartiesGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.thirdPartyHandler.Create(c) }))
 	thirdpartiesGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.thirdPartyHandler.List(c) }))
-	
+
 	itemsGroup := v1.Group("/items")
 	itemsGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.itemHandler.Create(c) }))
 	itemsGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.itemHandler.List(c) }))
 
 	v1.POST("/stock/movements", serviceReady(func(c echo.Context) error { return appState.services.stockHandler.CreateStockMovement(c) }))
-	
+
 	bomGroup := v1.Group("/boms")
 	bomGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.CreateBOM(c) }))
 	bomGroup.GET("/:id", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.GetBOMByID(c) }))
@@ -169,10 +174,14 @@ func main() {
 	bomGroup.DELETE("/:id", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.DeleteBOM(c) }))
 	bomGroup.POST("/calculate-cost", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.CalculatePredictiveCost(c) }))
 	bomGroup.POST("/produce", serviceReady(func(c echo.Context) error { return appState.services.bomHandler.ProduceItem(c) }))
-	
+
 	marginGroup := v1.Group("/margin")
 	marginGroup.GET("/products/:productID", serviceReady(func(c echo.Context) error { return appState.services.marginHandler.GetProductMarginReport(c) }))
 	marginGroup.GET("", serviceReady(func(c echo.Context) error { return appState.services.marginHandler.ListOverallMarginReports(c) }))
+
+	invoiceGroup := v1.Group("/invoices")
+	invoiceGroup.POST("", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.CreateInvoice(c) }))
+	invoiceGroup.GET("/:id", serviceReady(func(c echo.Context) error { return appState.services.invoiceHandler.GetInvoice(c) }))
 
 	// Start DB initialization in the background
 	go initServices(cfg)
