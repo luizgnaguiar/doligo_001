@@ -30,10 +30,19 @@ func (g *marotoGenerator) Generate(ctx context.Context, inv *invoice.Invoice) ([
 	if err := g.buildHeader(m, inv); err != nil {
 		return nil, err
 	}
-	if err := g.buildBody(m, inv); err != nil {
+	// Pass context to buildBody
+	if err := g.buildBody(ctx, m, inv); err != nil {
 		return nil, err
 	}
 	g.buildFooter(m)
+
+	// Check for cancellation before the final, potentially expensive, output step.
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err() // Return context error if cancelled
+	default:
+		// continue
+	}
 
 	// Return the PDF as a byte array instead of writing to a file.
 	bytes, err := m.Output()
@@ -62,7 +71,8 @@ func (g *marotoGenerator) buildHeader(m pdf.Maroto, inv *invoice.Invoice) error 
 	return nil
 }
 
-func (g *marotoGenerator) buildBody(m pdf.Maroto, inv *invoice.Invoice) error {
+// buildBody now accepts a context to allow for cancellation.
+func (g *marotoGenerator) buildBody(ctx context.Context, m pdf.Maroto, inv *invoice.Invoice) error {
 	m.Line(10)
 
 	// Customer Information
@@ -84,6 +94,14 @@ func (g *marotoGenerator) buildBody(m pdf.Maroto, inv *invoice.Invoice) error {
 	headers := []string{"Description", "Quantity", "Unit Price", "Total"}
 	var contents [][]string
 	for _, line := range inv.Lines {
+		// Check for cancellation on each line item. This is crucial for large invoices.
+		select {
+		case <-ctx.Done():
+			return ctx.Err() // Return context error if cancelled
+		default:
+			// continue processing
+		}
+
 		contents = append(contents, []string{
 			line.Description,
 			fmt.Sprintf("%.2f", line.Quantity),
