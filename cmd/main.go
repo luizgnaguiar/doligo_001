@@ -19,6 +19,7 @@ import (
 	"doligo_001/internal/api/validator"
 	"doligo_001/internal/infrastructure/config"
 	"doligo_001/internal/infrastructure/db"
+	"doligo_001/internal/infrastructure/email"
 	"doligo_001/internal/infrastructure/logger"
 	"doligo_001/internal/infrastructure/metrics"
 	"doligo_001/internal/infrastructure/pdf"
@@ -80,7 +81,8 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	stockUsecase := stock_uc.NewUseCase(txManager, stockRepo, stockMoveRepo, stockLedgerRepo, warehouseRepo, binRepo, itemRepo)
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
-	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator)
+	emailSender := email.NewSimpleEmailSender()
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)

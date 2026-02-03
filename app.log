@@ -24,3 +24,12 @@ ____________________________________O/_______
 	[::1]:5432 (localhost): dial error: dial tcp [::1]:5432: connect: connection refused
 	127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused
 {"level":"error","error":"failed to connect to database: failed to connect to `user=user database=dolibarr`:\n\t[::1]:5432 (localhost): dial error: dial tcp [::1]:5432: connect: connection refused\n\t127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connect: connection refused","time":"2026-02-01T19:58:29-03:00","message":"Failed to initialize database. Service routes will not be available."}
+{"level":"info","time":"2026-02-02T09:16:13-03:00","message":"Shutting down server and PDF Worker Pool..."}
+2026/02/02 09:16:13 Initiating graceful shutdown for worker pool 'PDFGenerator'.
+2026/02/02 09:16:13 Worker #2 for 'PDFGenerator' stopping: graceful shutdown initiated.
+2026/02/02 09:16:13 Worker #3 for 'PDFGenerator' stopping: graceful shutdown initiated.
+2026/02/02 09:16:13 Worker #5 for 'PDFGenerator' stopping: graceful shutdown initiated.
+2026/02/02 09:16:13 Worker #4 for 'PDFGenerator' stopping: graceful shutdown initiated.
+2026/02/02 09:16:13 Worker #1 for 'PDFGenerator' stopping: graceful shutdown initiated.
+2026/02/02 09:16:13 Worker pool 'PDFGenerator' shutdown complete: all tasks processed.
+{"level":"info","time":"2026-02-02T09:16:13-03:00","message":"Server and PDF Worker Pool gracefully stopped."}

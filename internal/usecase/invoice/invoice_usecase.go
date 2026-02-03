@@ -2,12 +2,13 @@ package invoice
 
 import (
 	"context"
+	"doligo_001/internal/domain/invoice"
+	"doligo_001/internal/infrastructure/email"
 	"fmt"
 	"time"
 
 	"doligo_001/internal/api/dto"
 	"doligo_001/internal/domain"
-	"doligo_001/internal/domain/invoice"
 	"doligo_001/internal/infrastructure/pdf"
 	item_usecase "doligo_001/internal/usecase/item"
 
@@ -18,13 +19,15 @@ type usecase struct {
 	invoiceRepo Repository
 	itemRepo    item_usecase.Repository
 	pdfGen      pdf.Generator
+	emailSender email.EmailSender
 }
 
-func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator) Usecase {
+func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender) Usecase {
 	return &usecase{
 		invoiceRepo: invoiceRepo,
 		itemRepo:    itemRepo,
 		pdfGen:      pdfGen,
+		emailSender: emailSender,
 	}
 }
 
@@ -76,6 +79,13 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 	if err != nil {
 		return nil, err
 	}
+
+	// Send email
+	go func() {
+		emailCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		u.emailSender.Send(emailCtx, "test@example.com", "New Invoice Created", fmt.Sprintf("Invoice %s has been created.", newInvoice.Number))
+	}()
 
 	return newInvoice, nil
 }
