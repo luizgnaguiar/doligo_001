@@ -1,147 +1,229 @@
 # Variáveis de Ambiente
 
-Este documento detalha todas as variáveis de ambiente utilizadas pela aplicação.
+**Versão**: 1.0.0  
+**Data**: 2026-02-03
+**Escopo**: Aplicação completa
 
 ---
 
-### `APP_ENV`
-- **Descrição**: Define o ambiente em que a aplicação está rodando (ex: `development`, `production`).
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `development`
-- **Impacto se Ausente ou Inválida**: A aplicação usará o valor padrão `development`. Pode afetar a configuração de logs ou outros comportamentos dependentes do ambiente.
+## 1. APP_ENV
+
+- **Descrição**: Define o ambiente de execução da aplicação (e.g., "development", "production").
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `development`
+- **Impacto se Ausente**: A aplicação assume o ambiente de desenvolvimento, o que pode afetar o nível de log e outros comportamentos.
+- **Exemplo**:
+  ```
+  APP_ENV=production
+  ```
 
 ---
 
-### `PORT`
-- **Descrição**: Especifica a porta na qual o servidor HTTP irá escutar.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `8080`
-- **Impacto se Ausente ou Inválida**: A aplicação usará a porta padrão `8080`. Se a porta estiver em uso, a aplicação falhará ao iniciar.
+## 2. PORT
+
+- **Descrição**: Define a porta TCP onde o servidor web irá escutar.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `8080`
+- **Impacto se Ausente**: O servidor web tentará iniciar na porta 8080.
+- **Exemplo**:
+  ```
+  PORT=3000
+  ```
 
 ---
 
-### `LOG_LEVEL`
-- **Descrição**: Define o nível mínimo de severidade para os logs que serão registrados.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `info`
-- **Impacto se Ausente ou Inválida**: A aplicação usará o nível de log padrão `info`. Um valor inválido pode fazer com que nenhum log seja exibido.
+## 3. DB_TYPE
+
+- **Descrição**: Especifica o dialeto do banco de dados a ser utilizado.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `postgres`
+- **Impacto se Ausente**: O sistema tentará se conectar a um banco de dados PostgreSQL.
+- **Exemplo**:
+  ```
+  DB_TYPE=mysql
+  ```
 
 ---
 
-### `JWT_SECRET`
-- **Descrição**: Chave secreta utilizada para assinar e verificar os tokens JWT (JSON Web Tokens).
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional (altamente recomendado para produção)
-- **Valor Padrão**: `super-secret-jwt-key`
-- **Impacto se Ausente ou Inválida**: A aplicação usará a chave padrão, o que é inseguro para ambientes de produção. A autenticação de usuários não funcionará corretamente se a chave for alterada enquanto tokens ainda são válidos.
+## 4. DB_HOST
 
----
-
-### `DB_TYPE`
-- **Descrição**: Define o tipo do banco de dados a ser utilizado.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `postgres`
-- **Impacto se Ausente ou Inválida**: A aplicação tentará se conectar a um banco de dados PostgreSQL. Um tipo de banco de dados não suportado causará falha na inicialização.
-
----
-
-### `DB_HOST`
 - **Descrição**: Endereço do servidor de banco de dados.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `localhost`
-- **Impacto se Ausente ou Inválida**: A aplicação tentará se conectar ao `localhost`. Se o banco de dados estiver em outro host, a conexão falhará.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `localhost`
+- **Impacto se Ausente**: O sistema tentará se conectar ao banco de dados no host local.
+- **Exemplo**:
+  ```
+  DB_HOST=db.meu-servidor.com
+  ```
 
 ---
 
-### `DB_PORT`
+## 5. DB_PORT
+
 - **Descrição**: Porta do servidor de banco de dados.
-- **Tipo**: `Integer`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `5432`
-- **Impacto se Ausente ou Inválida**: A aplicação usará a porta padrão `5432`. Uma porta incorreta impedirá a conexão com o banco de dados.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `5432`
+- **Impacto se Ausente**: O sistema tentará se conectar à porta padrão do PostgreSQL.
+- **Exemplo**:
+  ```
+  DB_PORT=5433
+  ```
 
 ---
 
-### `DB_USER`
+## 6. DB_USER
+
 - **Descrição**: Nome de usuário para autenticação no banco de dados.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `user`
-- **Impacto se Ausente ou Inválida**: A conexão com o banco de dados falhará se o usuário for inválido ou não tiver as permissões necessárias.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `user`
+- **Impacto se Ausente**: A conexão usará o nome de usuário "user".
+- **Exemplo**:
+  ```
+  DB_USER=admin
+  ```
 
 ---
 
-### `DB_PASSWORD`
+## 7. DB_PASSWORD
+
 - **Descrição**: Senha para autenticação no banco de dados.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `password`
-- **Impacto se Ausente ou Inválida**: A autenticação no banco de dados falhará.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `password`
+- **Impacto se Ausente**: A conexão usará a senha "password".
+- **Exemplo**:
+  ```
+  DB_PASSWORD=senha_super_segura
+  ```
 
 ---
 
-### `DB_NAME`
+## 8. DB_NAME
+
 - **Descrição**: Nome do banco de dados (database/schema) a ser utilizado.
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `dolibarr`
-- **Impacto se Ausente ou Inválida**: A aplicação não conseguirá selecionar o banco de dados correto, resultando em falha na conexão ou tabelas não encontradas.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `dolibarr`
+- **Impacto se Ausente**: O sistema tentará se conectar ao banco de dados "dolibarr".
+- **Exemplo**:
+  ```
+  DB_NAME=erp_producao
+  ```
 
 ---
 
-### `DB_SSLMODE`
-- **Descrição**: Modo de conexão SSL com o banco de dados (ex: `disable`, `require`, `verify-full`).
-- **Tipo**: `String`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `disable`
-- **Impacto se Ausente ou Inválida**: A aplicação pode não conseguir se conectar ao banco de dados se ele exigir um modo SSL específico.
+## 9. DB_SSLMODE
+
+- **Descrição**: Modo de conexão SSL com o banco de dados.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `disable`
+- **Impacto se Ausente**: A conexão com o banco de dados não usará SSL, o que é inseguro para ambientes de produção.
+- **Exemplo**:
+  ```
+  DB_SSLMODE=require
+  ```
 
 ---
 
-### `DB_MAX_OPEN_CONNS`
+## 10. DB_MAX_OPEN_CONNS
+
 - **Descrição**: Número máximo de conexões abertas com o banco de dados.
-- **Tipo**: `Integer`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `10`
-- **Impacto se Ausente ou Inválida**: Um valor muito baixo pode degradar a performance sob carga. Um valor muito alto pode sobrecarregar o banco de dados.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `10`
+- **Impacto se Ausente**: O pool de conexões terá no máximo 10 conexões ativas.
+- **Exemplo**:
+  ```
+  DB_MAX_OPEN_CONNS=100
+  ```
 
 ---
 
-### `DB_MAX_IDLE_CONNS`
+## 11. DB_MAX_IDLE_CONNS
+
 - **Descrição**: Número máximo de conexões inativas no pool de conexões.
-- **Tipo**: `Integer`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `5`
-- **Impacto se Ausente ou Inválida**: Afeta a reutilização de conexões e a performance da aplicação.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `5`
+- **Impacto se Ausente**: O pool de conexões manterá no máximo 5 conexões inativas.
+- **Exemplo**:
+  ```
+  DB_MAX_IDLE_CONNS=20
+  ```
 
 ---
 
-### `DB_CONN_MAX_LIFETIME`
-- **Descrição**: Tempo máximo de vida de uma conexão com o banco de dados.
-- **Tipo**: `Duration` (ex: `5m`, `1h`)
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `5m`
-- **Impacto se Ausente ou Inválida**: Conexões podem se tornar obsoletas, causando erros em ambientes com firewalls ou proxies.
+## 12. DB_CONN_MAX_LIFETIME
+
+- **Descrição**: Tempo máximo que uma conexão pode ser reutilizada (formato: 5m, 1h).
+- **Tipo**: duration
+- **Obrigatório**: NÃO
+- **Valor Default**: `5m`
+- **Impacto se Ausente**: As conexões serão reutilizadas por no máximo 5 minutos.
+- **Exemplo**:
+  ```
+  DB_CONN_MAX_LIFETIME=1h
+  ```
 
 ---
 
-### `INTERNAL_WORKER_POOL_SIZE`
-- **Descrição**: Número de workers (goroutines) no pool de tarefas internas.
-- **Tipo**: `Integer`
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `5`
-- **Impacto se Ausente ou Inválida**: Afeta a concorrência e a vazão do processamento de tarefas em segundo plano.
+## 13. LOG_LEVEL
+
+- **Descrição**: Nível de verbosidade dos logs da aplicação.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `info`
+- **Impacto se Ausente**: Apenas logs de nível "info" ou superior (warn, error, fatal) serão exibidos.
+- **Exemplo**:
+  ```
+  LOG_LEVEL=debug
+  ```
 
 ---
 
-### `INTERNAL_WORKER_SHUTDOWN_TIMEOUT`
-- **Descrição**: Tempo máximo de espera para as tarefas do worker pool concluírem durante o graceful shutdown.
-- **Tipo**: `Duration` (ex: `15s`, `1m`)
-- **Obrigatoriedade**: Opcional
-- **Valor Padrão**: `15s`
-- **Impacto se Ausente ou Inválida**: Tarefas em andamento podem ser interrompidas abruptamente se o tempo for muito curto.
+## 14. INTERNAL_WORKER_POOL_SIZE
+
+- **Descrição**: Número de goroutines no pool de workers para tarefas em background.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `5`
+- **Impacto se Ausente**: O worker pool será iniciado com 5 workers.
+- **Exemplo**:
+  ```
+  INTERNAL_WORKER_POOL_SIZE=20
+  ```
+
+---
+
+## 15. INTERNAL_WORKER_SHUTDOWN_TIMEOUT
+
+- **Descrição**: Tempo máximo de espera para as tarefas em background finalizarem durante um graceful shutdown (formato: 15s, 1m).
+- **Tipo**: duration
+- **Obrigatório**: NÃO
+- **Valor Default**: `15s`
+- **Impacto se Ausente**: A aplicação aguardará até 15 segundos para os workers finalizarem antes de forçar o encerramento.
+- **Exemplo**:
+  ```
+  INTERNAL_WORKER_SHUTDOWN_TIMEOUT=30s
+  ```
+
+---
+
+## 16. JWT_SECRET
+
+- **Descrição**: Chave secreta para assinar e verificar tokens JWT.
+- **Tipo**: string
+- **Obrigatório**: NÃO
+- **Valor Default**: `super-secret-jwt-key`
+- **Impacto se Ausente**: A segurança da autenticação estará comprometida se a chave default for usada em produção.
+- **Exemplo**:
+  ```
+  JWT_SECRET=uma_chave_secreta_longa_e_dificil_de_adivinhar
+  ```

@@ -1,24 +1,21 @@
-### SESSION_LOG_START | Versão: v1.0.0 | Data: 02/02/2026
-- ARQUIVOS CRIADOS/MODIFICADOS: N/A – fase declaratória
+SESSION_LOG_START | Versão: v1.0.0 | Data: 03/02/2026
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - docs/env_vars.md
+  - SESSION_LOG.txt
+
 - RESUMO TÉCNICO:
-  Foi realizada a declaração operacional do estado de governança das variáveis de ambiente identificadas no arquivo `internal/infrastructure/config/config.go`. Nenhuma evidência explícita de documentação ou versionamento (e.g., `.env.example`) foi encontrada na estrutura de diretórios fornecida.
+  - Inventário completo de 16 variáveis de ambiente extraído de config.go
+  - Documentação estruturada criada em docs/env_vars.md seguindo template obrigatório.
+  - Nenhuma modificação de código Go foi realizada, conforme validado.
+  - Log de sessão atualizado.
+
 - DÍVIDA TÉCNICA / PENDÊNCIAS:
-  DÍVIDA OPERACIONAL: As seguintes variáveis de ambiente, exigidas pelo sistema para operação em produção, não estão explicitamente documentadas ou versionadas:
-    - APP_ENV
-    - PORT
-    - DB_TYPE
-    - DB_HOST
-    - DB_PORT
-    - DB_USER
-    - DB_PASSWORD
-    - DB_NAME
-    - DB_SSLMODE
-    - DB_MAX_OPEN_CONNS
-    - DB_MAX_IDLE_CONNS
-    - DB_CONN_MAX_LIFETIME
-    - LOG_LEVEL
-    - INTERNAL_WORKER_POOL_SIZE
-    - INTERNAL_WORKER_SHUTDOWN_TIMEOUT
-    - JWT_SECRET
-- COMANDO DE VALIDAÇÃO: N/A – verificação operacional externa
-### SESSION_LOG_END
+  - N/A
+
+- COMANDO DE VALIDAÇÃO:
+  - test -f docs/env_vars.md
+  - git diff --name-only | grep -E '\.go$'
+
+- SUGESTÃO DE COMMIT:
+  docs(fase-12.1): documenta variáveis de ambiente em docs/env_vars.md
+SESSION_LOG_END
