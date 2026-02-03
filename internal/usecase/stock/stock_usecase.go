@@ -7,20 +7,21 @@ import (
 	"time"
 
 	"doligo_001/internal/domain"
+	"doligo_001/internal/domain/item"
 	"doligo_001/internal/domain/stock"
 	"doligo_001/internal/infrastructure/db"
-	"doligo_001/internal/infrastructure/repository"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 var (
 	ErrInsufficientStock = errors.New("insufficient stock for movement")
+	ErrBinRequired       = errors.New("bin_id is required for all stock movements")
 )
 
 // UseCase defines the interface for stock management use cases.
 type UseCase interface {
-	CreateStockMovement(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error)
+	CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error)
 	CreateWarehouse(ctx context.Context, name string) (*stock.Warehouse, error)
 	ListWarehouses(ctx context.Context) ([]*stock.Warehouse, error)
 	GetWarehouseByID(ctx context.Context, id uuid.UUID) (*stock.Warehouse, error)
@@ -30,27 +31,56 @@ type UseCase interface {
 
 // stockUseCase implements the UseCase interface.
 type stockUseCase struct {
-	db        *gorm.DB
-	txManager db.Transactioner
+	txManager    db.Transactioner
+	stockRepo    stock.StockRepository
+	stockMoveRepo stock.StockMovementRepository
+	stockLedgerRepo stock.StockLedgerRepository
+	warehouseRepo stock.WarehouseRepository
+	binRepo      stock.BinRepository
+	itemRepo     item.Repository
 }
 
 // NewUseCase creates a new stockUseCase.
-func NewUseCase(db *gorm.DB, txManager db.Transactioner) UseCase {
-	return &stockUseCase{db: db, txManager: txManager}
+func NewUseCase(
+	txManager db.Transactioner,
+	stockRepo stock.StockRepository,
+	stockMoveRepo stock.StockMovementRepository,
+	stockLedgerRepo stock.StockLedgerRepository,
+	warehouseRepo stock.WarehouseRepository,
+	binRepo stock.BinRepository,
+	itemRepo item.Repository,
+) UseCase {
+	return &stockUseCase{
+		txManager:    txManager,
+		stockRepo:    stockRepo,
+		stockMoveRepo: stockMoveRepo,
+		stockLedgerRepo: stockLedgerRepo,
+		warehouseRepo: warehouseRepo,
+		binRepo:      binRepo,
+		itemRepo:     itemRepo,
+	}
 }
 
 // CreateStockMovement handles the logic for creating a stock movement atomically.
-func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error) {
+func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error) {
 	var createdMovement *stock.StockMovement
 
+	// Explicitly check for zero UUID as a safeguard, though validation should catch it.
+	if binID == uuid.Nil {
+		return nil, ErrBinRequired
+	}
+
 	err := uc.txManager.Transaction(ctx, func(tx *gorm.DB) error {
-		stockRepo := repository.NewGormStockRepository(tx)
-		movementRepo := repository.NewGormStockMovementRepository(tx)
-		ledgerRepo := repository.NewGormStockLedgerRepository(tx)
+		// Create transactional repositories
+		txStockRepo := uc.stockRepo.WithTx(tx)
+		txMovementRepo := uc.stockMoveRepo.WithTx(tx)
+		txLedgerRepo := uc.stockLedgerRepo.WithTx(tx)
+		txItemRepo := uc.itemRepo.WithTx(tx)
+		txWarehouseRepo := uc.warehouseRepo.WithTx(tx)
+		txBinRepo := uc.binRepo.WithTx(tx)
 
 		// Validate ItemID
-		itemRepo := repository.NewGormItemRepository(tx)
-		_, err := itemRepo.GetByID(ctx, itemID)
+		_, err := txItemRepo.GetByID(ctx, itemID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.New("item not found")
@@ -59,8 +89,7 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 		}
 
 		// Validate WarehouseID
-		warehouseRepo := repository.NewGormWarehouseRepository(tx)
-		warehouse, err := warehouseRepo.GetByID(ctx, warehouseID)
+		warehouse, err := txWarehouseRepo.GetByID(ctx, warehouseID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.New("warehouse not found")
@@ -71,26 +100,23 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 			return errors.New("warehouse is inactive")
 		}
 
-		// Validate BinID if provided
-		if binID != nil {
-			binRepo := repository.NewGormBinRepository(tx)
-			bin, err := binRepo.GetByID(ctx, *binID)
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errors.New("bin not found")
-				}
-				return err
+		// Validate BinID
+		bin, err := txBinRepo.GetByID(ctx, binID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("bin not found")
 			}
-			if bin.WarehouseID != warehouseID {
-				return errors.New("bin does not belong to the specified warehouse")
-			}
-			if !bin.IsActive {
-				return errors.New("bin is inactive")
-			}
+			return err
+		}
+		if bin.WarehouseID != warehouseID {
+			return errors.New("bin does not belong to the specified warehouse")
+		}
+		if !bin.IsActive {
+			return errors.New("bin is inactive")
 		}
 
 		// 1. Get current stock with pessimistic lock
-		currentStock, err := stockRepo.GetStockForUpdate(ctx, itemID, warehouseID, binID)
+		currentStock, err := txStockRepo.GetStockForUpdate(ctx, itemID, warehouseID, &binID)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
@@ -117,15 +143,15 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 			ID:          uuid.New(),
 			ItemID:      itemID,
 			WarehouseID: warehouseID,
-			BinID:       binID,
+			BinID:       &binID,
 			Type:        movementType,
 			Quantity:    quantity,
 			Reason:      reason,
 			HappenedAt:  time.Now(),
-			CreatedBy:   userID,
 		}
+		movement.SetCreatedBy(userID)
 
-		if err := movementRepo.Create(ctx, movement); err != nil {
+		if err := txMovementRepo.Create(ctx, movement); err != nil {
 			return err
 		}
 
@@ -135,11 +161,11 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 		stockToUpdate := &stock.Stock{
 			ItemID:      itemID,
 			WarehouseID: warehouseID,
-			BinID:       binID,
+			BinID:       &binID,
 			Quantity:    quantityAfter,
 			UpdatedAt:   time.Now(),
 		}
-		if err := stockRepo.UpsertStock(ctx, stockToUpdate); err != nil {
+		if err := txStockRepo.UpsertStock(ctx, stockToUpdate); err != nil {
 			return err
 		}
 
@@ -149,7 +175,7 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 			StockMovementID: movement.ID,
 			ItemID:          itemID,
 			WarehouseID:     warehouseID,
-			BinID:           binID,
+			BinID:           &binID,
 			MovementType:    movementType,
 			QuantityChange:  quantity,
 			QuantityBefore:  quantityBefore,
@@ -160,7 +186,7 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 			RecordedBy:      userID,
 		}
 
-		return ledgerRepo.Create(ctx, ledgerEntry)
+		return txLedgerRepo.Create(ctx, ledgerEntry)
 	})
 
 	return createdMovement, err
@@ -169,7 +195,7 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 func (uc *stockUseCase) CreateWarehouse(ctx context.Context, name string) (*stock.Warehouse, error) {
 	var createdWarehouse *stock.Warehouse
 	err := uc.txManager.Transaction(ctx, func(tx *gorm.DB) error {
-		repo := repository.NewGormWarehouseRepository(tx)
+		repo := uc.warehouseRepo.WithTx(tx)
 		userID, _ := domain.UserIDFromContext(ctx)
 
 		warehouse := &stock.Warehouse{
@@ -190,19 +216,17 @@ func (uc *stockUseCase) CreateWarehouse(ctx context.Context, name string) (*stoc
 }
 
 func (uc *stockUseCase) ListWarehouses(ctx context.Context) ([]*stock.Warehouse, error) {
-	repo := repository.NewGormWarehouseRepository(uc.db)
-	return repo.List(ctx)
+	return uc.warehouseRepo.List(ctx)
 }
 
 func (uc *stockUseCase) GetWarehouseByID(ctx context.Context, id uuid.UUID) (*stock.Warehouse, error) {
-	repo := repository.NewGormWarehouseRepository(uc.db)
-	return repo.GetByID(ctx, id)
+	return uc.warehouseRepo.GetByID(ctx, id)
 }
 
 func (uc *stockUseCase) CreateBin(ctx context.Context, name string, warehouseID uuid.UUID) (*stock.Bin, error) {
 	var createdBin *stock.Bin
 	err := uc.txManager.Transaction(ctx, func(tx *gorm.DB) error {
-		repo := repository.NewGormBinRepository(tx)
+		repo := uc.binRepo.WithTx(tx)
 		userID, _ := domain.UserIDFromContext(ctx)
 
 		bin := &stock.Bin{
@@ -224,6 +248,5 @@ func (uc *stockUseCase) CreateBin(ctx context.Context, name string, warehouseID 
 }
 
 func (uc *stockUseCase) ListBinsByWarehouse(ctx context.Context, warehouseID uuid.UUID) ([]*stock.Bin, error) {
-	repo := repository.NewGormBinRepository(uc.db)
-	return repo.ListByWarehouse(ctx, warehouseID)
+	return uc.binRepo.ListByWarehouse(ctx, warehouseID)
 }

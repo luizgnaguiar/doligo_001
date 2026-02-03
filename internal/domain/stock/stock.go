@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Warehouse represents a physical or logical location where stock is held.
@@ -108,6 +109,7 @@ type StockLedger struct {
 
 // WarehouseRepository defines the contract for warehouse data persistence.
 type WarehouseRepository interface {
+	WithTx(tx *gorm.DB) WarehouseRepository
 	Create(ctx context.Context, warehouse *Warehouse) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Warehouse, error)
 	Update(ctx context.Context, warehouse *Warehouse) error
@@ -117,6 +119,7 @@ type WarehouseRepository interface {
 
 // BinRepository defines the contract for bin data persistence.
 type BinRepository interface {
+	WithTx(tx *gorm.DB) BinRepository
 	Create(ctx context.Context, bin *Bin) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Bin, error)
 	Update(ctx context.Context, bin *Bin) error
@@ -127,16 +130,19 @@ type BinRepository interface {
 // StockMovementRepository defines the contract for creating stock movements,
 // which must be handled transactionally.
 type StockMovementRepository interface {
+	WithTx(tx *gorm.DB) StockMovementRepository
     Create(ctx context.Context, movement *StockMovement) error
 }
 
 // StockLedgerRepository defines the contract for creating immutable ledger entries.
 type StockLedgerRepository interface {
+	WithTx(tx *gorm.DB) StockLedgerRepository
 	Create(ctx context.Context, entry *StockLedger) error
 }
 
 // StockRepository defines the contract for stock-related queries and updates, including pessimistic locking.
 type StockRepository interface {
+	WithTx(tx *gorm.DB) StockRepository
     GetStock(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
     GetStockForUpdate(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
     UpsertStock(ctx context.Context, stock *Stock) error

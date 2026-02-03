@@ -75,7 +75,7 @@ func NewBinResponse(b *stock.Bin) *BinResponse {
 type CreateStockMovementRequest struct {
 	ItemID      string  `json:"item_id" validate:"required,uuid"`
 	WarehouseID string  `json:"warehouse_id" validate:"required,uuid"`
-	BinID       *string `json:"bin_id,omitempty" validate:"omitempty,uuid"`
+	BinID       string  `json:"bin_id" validate:"required,uuid"`
 	Type        string  `json:"type" validate:"required,oneof=IN OUT"`
 	Quantity    float64 `json:"quantity" validate:"required,gt=0"`
 	Reason      string  `json:"reason" validate:"max=255"`

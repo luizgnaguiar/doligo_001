@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ItemType differentiates between storable products and services.
@@ -47,6 +48,7 @@ func (i *Item) SetUpdatedBy(userID uuid.UUID) {
 // Repository defines the contract for data persistence operations for Items.
 // It operates purely on Item domain entities.
 type Repository interface {
+	WithTx(tx *gorm.DB) Repository
 	Create(ctx context.Context, item *Item) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
 	Update(ctx context.Context, item *Item) error

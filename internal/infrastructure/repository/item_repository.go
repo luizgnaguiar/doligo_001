@@ -16,6 +16,10 @@ type gormItemRepository struct {
 	db *gorm.DB
 }
 
+func (r *gormItemRepository) WithTx(tx *gorm.DB) item.Repository {
+	return NewGormItemRepository(tx)
+}
+
 // NewGormItemRepository creates a new gormItemRepository.
 func NewGormItemRepository(db *gorm.DB) item.Repository {
 	return &gormItemRepository{db: db}

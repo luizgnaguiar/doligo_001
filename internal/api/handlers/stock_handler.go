@@ -130,13 +130,9 @@ func (h *StockHandler) CreateStockMovement(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Warehouse ID format")
 	}
-	var binID *uuid.UUID
-	if req.BinID != nil {
-		id, err := uuid.Parse(*req.BinID)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "Invalid Bin ID format")
-		}
-		binID = &id
+	binID, err := uuid.Parse(req.BinID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Bin ID format")
 	}
 
 	movement, err := h.usecase.CreateStockMovement(
@@ -149,7 +145,7 @@ func (h *StockHandler) CreateStockMovement(c echo.Context) error {
 		req.Reason,
 	)
 	if err != nil {
-		if err == stock_usecase.ErrInsufficientStock {
+		if err == stock_usecase.ErrInsufficientStock || err == stock_usecase.ErrBinRequired {
 			return echo.NewHTTPError(http.StatusConflict, err.Error())
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

@@ -17,6 +17,10 @@ type gormWarehouseRepository struct {
 	db *gorm.DB
 }
 
+func (r *gormWarehouseRepository) WithTx(tx *gorm.DB) stock.WarehouseRepository {
+	return NewGormWarehouseRepository(tx)
+}
+
 // NewGormWarehouseRepository creates a new gormWarehouseRepository.
 func NewGormWarehouseRepository(db *gorm.DB) stock.WarehouseRepository {
 	return &gormWarehouseRepository{db: db}
@@ -61,6 +65,10 @@ type gormBinRepository struct {
 	db *gorm.DB
 }
 
+func (r *gormBinRepository) WithTx(tx *gorm.DB) stock.BinRepository {
+	return NewGormBinRepository(tx)
+}
+
 // NewGormBinRepository creates a new gormBinRepository.
 func NewGormBinRepository(db *gorm.DB) stock.BinRepository {
 	return &gormBinRepository{db: db}
@@ -103,6 +111,10 @@ func (r *gormBinRepository) Delete(ctx context.Context, id uuid.UUID) error {
 // gormStockRepository is a GORM implementation of the stock.StockRepository.
 type gormStockRepository struct {
 	db *gorm.DB
+}
+
+func (r *gormStockRepository) WithTx(tx *gorm.DB) stock.StockRepository {
+	return NewGormStockRepository(tx)
 }
 
 // NewGormStockRepository creates a new gormStockRepository.
@@ -152,6 +164,10 @@ type gormStockMovementRepository struct {
 	db *gorm.DB
 }
 
+func (r *gormStockMovementRepository) WithTx(tx *gorm.DB) stock.StockMovementRepository {
+	return NewGormStockMovementRepository(tx)
+}
+
 // NewGormStockMovementRepository creates a new gormStockMovementRepository.
 func NewGormStockMovementRepository(db *gorm.DB) stock.StockMovementRepository {
 	return &gormStockMovementRepository{db: db}
@@ -165,6 +181,10 @@ func (r *gormStockMovementRepository) Create(ctx context.Context, sm *stock.Stoc
 // gormStockLedgerRepository is a GORM implementation of the stock.StockLedgerRepository.
 type gormStockLedgerRepository struct {
 	db *gorm.DB
+}
+
+func (r *gormStockLedgerRepository) WithTx(tx *gorm.DB) stock.StockLedgerRepository {
+	return NewGormStockLedgerRepository(tx)
 }
 
 // NewGormStockLedgerRepository creates a new gormStockLedgerRepository.
