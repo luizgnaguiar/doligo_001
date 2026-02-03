@@ -1,21 +1,18 @@
 SESSION_LOG_START | Versão: v1.0.0 | Data: 03/02/2026
 - ARQUIVOS CRIADOS/MODIFICADOS:
-  - docs/env_vars.md
-  - SESSION_LOG.txt
+  - docs/reverse_proxy_timeouts.md
 
 - RESUMO TÉCNICO:
-  - Inventário completo de 16 variáveis de ambiente extraído de config.go
-  - Documentação estruturada criada em docs/env_vars.md seguindo template obrigatório.
-  - Nenhuma modificação de código Go foi realizada, conforme validado.
-  - Log de sessão atualizado.
+  - Análise de 3 endpoints com operações longas (`/invoices/.../pdf`, `/margin`, `/boms/produce`).
+  - Valores mínimos de timeout para reverse proxy foram documentados com justificativa técnica baseada em timeouts internos e natureza das operações (transacional, agregação).
+  - Exemplos de configuração fornecidos para Nginx e Traefik.
+  - Nenhuma modificação de código Go ou de arquivos de configuração de ambiente foi realizada.
 
 - DÍVIDA TÉCNICA / PENDÊNCIAS:
-  - N/A
+  - Os valores de timeout recomendados são baseados em análise estática. Devem ser validados sob carga real em um ambiente de staging/produção.
 
 - COMANDO DE VALIDAÇÃO:
-  - test -f docs/env_vars.md
-  - git diff --name-only | grep -E '\.go$'
+  - test -f docs/reverse_proxy_timeouts.md && echo "OK" || echo "FALHA"
+  - git diff --name-only --exit-code | grep -E '\.go$' && (echo "FALHA: Arquivo Go modificado"; exit 1) || echo "OK"
 
-- SUGESTÃO DE COMMIT:
-  docs(fase-12.1): documenta variáveis de ambiente em docs/env_vars.md
 SESSION_LOG_END
