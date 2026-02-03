@@ -164,15 +164,27 @@ func main() {
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
 
-	gormDB, appMetrics, err := initServices(ctx, cfg, e)
-	if err != nil {
-		slog.Error("Failed to initialize services", "error", err)
-		os.Exit(1)
-	}
+	// Basic health check available immediately
+	e.GET("/health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
 
-	// Setup middlewares
-	e.Use(apiMiddleware.RequestLogger)
-	e.Use(apiMiddleware.MetricsMiddleware(appMetrics))
+	var gormDB *gorm.DB
+	var appMetrics *metrics.Metrics
+
+	// Start services in a separate goroutine
+	go func() {
+		var err error
+		gormDB, appMetrics, err = initServices(ctx, cfg, e)
+		if err != nil {
+			slog.Error("Failed to initialize services", "error", err)
+			// The /ready probe will fail, so we don't need to exit
+		} else {
+			// Setup middlewares that depend on services
+			e.Use(apiMiddleware.RequestLogger)
+			e.Use(apiMiddleware.MetricsMiddleware(appMetrics))
+		}
+	}()
 
 	// Start server in a goroutine
 	go func() {

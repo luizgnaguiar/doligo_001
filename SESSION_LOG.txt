@@ -1,21 +1,60 @@
-SESSION_LOG_START | Versão: v1.0.0 | Data: 03/02/2026
+SESSION_LOG_START | Versão: v1.0.1 | Data: 03/02/2026
 - ARQUIVOS CRIADOS/MODIFICADOS:
-  - docs/backup_strategy.md
+  - cmd/main.go
 
 - RESUMO TÉCNICO:
-  - Estratégia de backup full definida (tipo, frequência, retenção)
-  - Procedimentos documentados para PostgreSQL e MySQL
-  - Comandos de backup e restauração validados como reproduzíveis
-  - Checklist de execução e cenários de recuperação incluídos
-  - Nenhuma automação ou integração foi implementada
+  - INVESTIGAÇÃO:
+    - [Etapa 1: Foreground execution]
+      Resultado: A aplicação encerrava imediatamente após uma falha na conexão com o banco de dados. O log indicava "failed to initialize database".
+    
+    - [Etapa 2: Variáveis mínimas]
+      Resultado: Não foi necessário, o problema foi identificado na Etapa 1.
+    
+    - [Etapa 3: Análise de código]
+      Resultado: O `main.go` chamava `initServices` de forma bloqueante. Um erro nesta função (como a falha de conexão com o DB) causava a chamada de `os.Exit(1)`, terminando a aplicação.
+
+  - CORREÇÃO APLICADA:
+    - O arquivo `cmd/main.go` foi refatorado para adotar a inicialização não-bloqueante.
+    - A inicialização dos serviços dependentes de banco de dados (`initServices`) foi movida para uma goroutine.
+    - O servidor HTTP (Echo) é iniciado imediatamente na goroutine principal, garantindo que o endpoint `/health` esteja sempre disponível, mesmo que os outros serviços falhem ao iniciar.
+    - A aplicação agora loga o erro de inicialização dos serviços, mas não encerra, permitindo que o readiness probe `/ready` falhe e impeça o roteamento de tráfego para a instância não saudável.
+  
+  - VALIDAÇÃO:
+    - Binário executado com sucesso em Docker ubuntu:22.04.
+    - Logs de inicialização visíveis, mostrando a falha de conexão com o banco de dados sem crashar a aplicação.
+    - Endpoint /health respondeu HTTP 200 com a mensagem "OK".
+
+- CAUSA RAIZ:
+  A rotina de inicialização (`main`) era bloqueante e não resiliente a falhas de dependências externas (banco de dados). Qualquer erro durante a inicialização dos serviços causava um `os.Exit(1)`, encerrando abruptamente a aplicação e impedindo a resposta até mesmo de endpoints de liveness como `/health`.
+
+- EVIDÊNCIA DE SUCESSO:
+  Ambiente: Docker ubuntu:22.04
+  
+  Comando de build:
+  $ CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
+  
+  Comando de execução:
+  $ docker run --rm -d -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+  
+  Logs (primeiras 10 linhas):
+  {"time":"2026-02-03T22:59:16.281643125Z","level":"INFO","msg":"Logger initialized","level":"INFO"}
+  {"time":"2026-02-03T22:59:16.283117833Z","level":"INFO","msg":"Application Environment","env":"development"}
+  {"time":"2026-02-03T22:59:16.284332042Z","level":"INFO","msg":"Starting server","port":"8080"}
+  {"time":"2026-02-03T22:59:16.284735167Z","level":"INFO","msg":"Starting database and services initialization..."}
+  ⇨ http server started on [::]:8080
+  [error] failed to initialize database...
+  {"time":"2026-02-03T22:59:16.29292175Z","level":"ERROR","msg":"Failed to initialize services"...}
+  
+  Resposta do /health:
+  $ curl http://localhost:8080/health
+  OK
 
 - DÍVIDA TÉCNICA / PENDÊNCIAS:
-  - Automação de backup via cron/systemd não implementada
-  - Validação automática de integridade de backups não implementada
-  - Integração com storage externo não implementada
+  Nenhuma.
 
 - COMANDO DE VALIDAÇÃO:
-  - test -f docs/backup_strategy.md
-  - git diff --name-only | grep -E '\.(go|sh|yml)$'
+  - CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
+  - docker run --rm -d --name doligo-test -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+  - sleep 5 && curl http://localhost:8080/health && docker stop doligo-test
 
 SESSION_LOG_END
