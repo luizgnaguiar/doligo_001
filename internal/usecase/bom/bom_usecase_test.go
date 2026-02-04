@@ -8,6 +8,7 @@ import (
 
 	"doligo_001/internal/domain/bom"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // fakeBomRepository is a simple fake for the bom.Repository for testing.
@@ -20,6 +21,10 @@ func newFakeBomRepository() *fakeBomRepository {
 	return &fakeBomRepository{
 		boms: make(map[uuid.UUID]*bom.BillOfMaterials),
 	}
+}
+
+func (f *fakeBomRepository) WithTx(tx *gorm.DB) bom.Repository {
+	return f
 }
 
 func (f *fakeBomRepository) Create(ctx context.Context, bom *bom.BillOfMaterials) error {
@@ -72,7 +77,7 @@ func (f *fakeBomRepository) List(ctx context.Context) ([]*bom.BillOfMaterials, e
 
 func TestBomUsecase_GetBOMByID(t *testing.T) {
 	repo := newFakeBomRepository()
-	usecase := NewBOMUsecase(repo)
+	usecase := NewBOMUsecase(nil, repo, nil, nil, nil, nil, nil, nil)
 
 	bomID := uuid.New()
 	productID := uuid.New()

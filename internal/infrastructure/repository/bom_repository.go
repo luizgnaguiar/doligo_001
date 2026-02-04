@@ -24,6 +24,14 @@ func NewGormBomRepository(db *gorm.DB, transactioner db.Transactioner) bom.Repos
 	}
 }
 
+// WithTx returns a new repository with the provided transaction.
+func (r *gormBomRepository) WithTx(tx *gorm.DB) bom.Repository {
+	return &gormBomRepository{
+		db:            tx,
+		transactioner: r.transactioner,
+	}
+}
+
 // Create creates a new BillOfMaterials in the database.
 func (r *gormBomRepository) Create(ctx context.Context, b *bom.BillOfMaterials) error {
 	model := fromBomDomainEntity(b)
@@ -173,6 +181,11 @@ type gormProductionRecordRepository struct {
 // NewGormProductionRecordRepository creates a new gormProductionRecordRepository.
 func NewGormProductionRecordRepository(db *gorm.DB) bom.ProductionRecordRepository {
 	return &gormProductionRecordRepository{db: db}
+}
+
+// WithTx returns a new repository with the provided transaction.
+func (r *gormProductionRecordRepository) WithTx(tx *gorm.DB) bom.ProductionRecordRepository {
+	return &gormProductionRecordRepository{db: tx}
 }
 
 // Create creates a new ProductionRecord in the database.

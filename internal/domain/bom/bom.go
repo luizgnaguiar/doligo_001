@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 var (
@@ -82,6 +83,7 @@ func (pr *ProductionRecord) SetCreatedBy(userID uuid.UUID) {
 
 // Repository defines the contract for data persistence operations for BillOfMaterials.
 type Repository interface {
+	WithTx(tx *gorm.DB) Repository
 	Create(ctx context.Context, bom *BillOfMaterials) error
 	GetByID(ctx context.Context, id uuid.UUID) (*BillOfMaterials, error)
 	GetByProductID(ctx context.Context, productID uuid.UUID) (*BillOfMaterials, error)
@@ -92,5 +94,6 @@ type Repository interface {
 
 // ProductionRecordRepository defines the contract for data persistence operations for ProductionRecords.
 type ProductionRecordRepository interface {
+	WithTx(tx *gorm.DB) ProductionRecordRepository
 	Create(ctx context.Context, record *ProductionRecord) error
 }
