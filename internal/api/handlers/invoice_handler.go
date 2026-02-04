@@ -70,3 +70,16 @@ func (h *InvoiceHandler) GenerateInvoicePDF(c echo.Context) error {
 
 	return c.Blob(http.StatusOK, "application/pdf", pdfBytes)
 }
+
+func (h *InvoiceHandler) QueueInvoicePDF(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid ID")
+	}
+
+	if err := h.usecase.QueueInvoicePDFGeneration(c.Request().Context(), id); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to queue PDF generation: %v", err))
+	}
+
+	return c.NoContent(http.StatusAccepted)
+}

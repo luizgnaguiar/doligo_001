@@ -24,6 +24,11 @@ func (m *MockInvoiceRepo) Create(ctx context.Context, inv *domain_invoice.Invoic
 	return args.Error(0)
 }
 
+func (m *MockInvoiceRepo) Update(ctx context.Context, inv *domain_invoice.Invoice) error {
+	args := m.Called(ctx, inv)
+	return args.Error(0)
+}
+
 func (m *MockInvoiceRepo) FindByID(ctx context.Context, id uuid.UUID) (*domain_invoice.Invoice, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
@@ -84,7 +89,7 @@ func TestCreateInvoice_TaxCalculation(t *testing.T) {
 	mockPDFGen := new(MockPDFGen)
 	mockEmailSender := new(MockEmailSender)
 
-	usecase := uc_invoice.NewUsecase(mockInvoiceRepo, mockItemRepo, mockPDFGen, mockEmailSender)
+	usecase := uc_invoice.NewUsecase(mockInvoiceRepo, mockItemRepo, mockPDFGen, mockEmailSender, nil)
 
 	ctx := context.Background()
 	thirdPartyID := uuid.New().String()

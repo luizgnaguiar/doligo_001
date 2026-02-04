@@ -10,6 +10,7 @@ import (
 	"doligo_001/internal/api/dto"
 	"doligo_001/internal/domain"
 	"doligo_001/internal/infrastructure/pdf"
+	"doligo_001/internal/infrastructure/worker"
 	item_usecase "doligo_001/internal/usecase/item"
 
 	"github.com/google/uuid"
@@ -20,14 +21,16 @@ type usecase struct {
 	itemRepo    item_usecase.Repository
 	pdfGen      pdf.Generator
 	emailSender email.EmailSender
+	workerPool  *worker.WorkerPool
 }
 
-func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender) Usecase {
+func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender, workerPool *worker.WorkerPool) Usecase {
 	return &usecase{
 		invoiceRepo: invoiceRepo,
 		itemRepo:    itemRepo,
 		pdfGen:      pdfGen,
 		emailSender: emailSender,
+		workerPool:  workerPool,
 	}
 }
 
@@ -123,4 +126,33 @@ func (u *usecase) GenerateInvoicePDF(ctx context.Context, invoiceID uuid.UUID) (
 	filename := fmt.Sprintf("invoice-%s.pdf", inv.Number)
 
 	return pdfBytes, filename, nil
+}
+
+func (u *usecase) QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error {
+	// 1. Fetch the invoice to ensure it exists
+	inv, err := u.invoiceRepo.FindByID(ctx, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to find invoice: %w", err)
+	}
+
+	// 2. Update status to processing
+	inv.PDFStatus = "processing"
+	if err := u.invoiceRepo.Update(ctx, inv); err != nil {
+		return fmt.Errorf("failed to update invoice status: %w", err)
+	}
+
+	// 3. Submit to worker pool
+	task := &InvoicePDFTask{
+		InvoiceID: invoiceID,
+		Usecase:   u,
+	}
+
+	if err := u.workerPool.Submit(task); err != nil {
+		// If submission fails, try to revert status or mark as failed
+		inv.PDFStatus = "failed"
+		_ = u.invoiceRepo.Update(ctx, inv)
+		return fmt.Errorf("failed to submit PDF task: %w", err)
+	}
+
+	return nil
 }

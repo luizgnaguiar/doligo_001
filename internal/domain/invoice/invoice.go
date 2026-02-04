@@ -16,6 +16,8 @@ type Invoice struct {
 	TotalCost       float64
 	TotalTax        float64
 	Lines           []InvoiceLine
+	PDFStatus       string
+	PDFUrl          string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	CreatedBy       uuid.UUID

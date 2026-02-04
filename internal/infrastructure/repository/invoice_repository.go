@@ -41,6 +41,11 @@ func (r *invoiceRepository) FindByIDWithDetails(ctx context.Context, id uuid.UUI
 	return toInvoiceDomain(&modelInvoice), nil
 }
 
+func (r *invoiceRepository) Update(ctx context.Context, domainInvoice *invoice.Invoice) error {
+	modelInvoice := toInvoiceModel(domainInvoice)
+	return r.db.WithContext(ctx).Save(modelInvoice).Error
+}
+
 func toInvoiceModel(d *invoice.Invoice) *models.Invoice {
 	lines := make([]models.InvoiceLine, len(d.Lines))
 	for i, line := range d.Lines {
@@ -58,6 +63,9 @@ func toInvoiceModel(d *invoice.Invoice) *models.Invoice {
 		Date:         d.Date,
 		TotalAmount:  d.TotalAmount,
 		TotalCost:    d.TotalCost,
+		TotalTax:     d.TotalTax,
+		PDFStatus:    d.PDFStatus,
+		PDFUrl:       d.PDFUrl,
 		Lines:        lines,
 	}
 }
@@ -73,6 +81,9 @@ func toInvoiceLineModel(d *invoice.InvoiceLine) *models.InvoiceLine {
 		Quantity:    d.Quantity,
 		UnitPrice:   d.UnitPrice,
 		UnitCost:    d.UnitCost,
+		TaxRate:     d.TaxRate,
+		TaxAmount:   d.TaxAmount,
+		NetPrice:    d.NetPrice,
 		TotalAmount: d.TotalAmount,
 		TotalCost:   d.TotalCost,
 	}
@@ -91,6 +102,9 @@ func toInvoiceDomain(m *models.Invoice) *invoice.Invoice {
 		Date:         m.Date,
 		TotalAmount:  m.TotalAmount,
 		TotalCost:    m.TotalCost,
+		TotalTax:     m.TotalTax,
+		PDFStatus:    m.PDFStatus,
+		PDFUrl:       m.PDFUrl,
 		Lines:        lines,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
@@ -113,6 +127,9 @@ func toInvoiceLineDomain(m *models.InvoiceLine) *invoice.InvoiceLine {
 		Quantity:    m.Quantity,
 		UnitPrice:   m.UnitPrice,
 		UnitCost:    m.UnitCost,
+		TaxRate:     m.TaxRate,
+		TaxAmount:   m.TaxAmount,
+		NetPrice:    m.NetPrice,
 		TotalAmount: m.TotalAmount,
 		TotalCost:   m.TotalCost,
 		CreatedAt:   m.CreatedAt,

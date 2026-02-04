@@ -25,6 +25,7 @@ import (
 	"doligo_001/internal/infrastructure/metrics"
 	"doligo_001/internal/infrastructure/pdf"
 	"doligo_001/internal/infrastructure/repository"
+	"doligo_001/internal/infrastructure/worker"
 	"doligo_001/internal/usecase"
 	"doligo_001/internal/usecase/auth"
 	bom_uc "doligo_001/internal/usecase/bom"
@@ -36,7 +37,7 @@ import (
 )
 
 // initServices initializes database-dependent services and returns the db connection
-func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, *metrics.Metrics, error) {
+func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.DB, *metrics.Metrics, *worker.WorkerPool, error) {
 	slog.Info("Starting database and services initialization...")
 
 	// Metrics service
@@ -44,13 +45,13 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 
 	gormDB, dsn, err := db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	slog.Info("Database connection established.")
 
 	sqlDB, err := gormDB.DB()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if err := db.RunMigrations(ctx, sqlDB, cfg.Database.Type, dsn); err != nil {
@@ -62,6 +63,9 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 
 	pdfGenerator := pdf.NewMarotoGenerator()
 	txManager := db.NewGormTransactioner(gormDB)
+
+	// Worker Pool for IO tasks (e.g., PDF generation)
+	pdfWorkerPool := worker.NewWorkerPool(cfg.InternalWorker.PoolSize, cfg.InternalWorker.PoolSize*2, "PDF Generator")
 
 	// Repositories
 	userRepo := repository.NewGormUserRepository(gormDB)
@@ -86,7 +90,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	emailSender := email.NewSimpleEmailSender()
-	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender)
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender, pdfWorkerPool)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)
@@ -145,9 +149,10 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	invoiceGroup.POST("", invoiceHandler.CreateInvoice)
 	invoiceGroup.GET("/:id", invoiceHandler.GetInvoice)
 	invoiceGroup.GET("/:id/pdf", invoiceHandler.GenerateInvoicePDF)
+	invoiceGroup.POST("/:id/pdf", invoiceHandler.QueueInvoicePDF)
 
 	slog.Info("All services initialized and routes registered.")
-	return gormDB, appMetrics, nil
+	return gormDB, appMetrics, pdfWorkerPool, nil
 }
 
 func main() {
@@ -192,11 +197,12 @@ func main() {
 
 	var gormDB *gorm.DB
 	var appMetrics *metrics.Metrics
+	var pdfWorkerPool *worker.WorkerPool
 
 	// Start services in a separate goroutine
 	go func() {
 		var err error
-		gormDB, appMetrics, err = initServices(ctx, cfg, e)
+		gormDB, appMetrics, pdfWorkerPool, err = initServices(ctx, cfg, e)
 		if err != nil {
 			slog.Error("Failed to initialize services", "error", err)
 			// The /ready probe will fail, so we don't need to exit
@@ -236,6 +242,11 @@ func main() {
 	// Perform graceful shutdown for the HTTP server
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
+	}
+
+	// Shutdown Worker Pool
+	if pdfWorkerPool != nil {
+		pdfWorkerPool.Shutdown(cfg.InternalWorker.ShutdownTimeout)
 	}
 
 	// Close database connection

@@ -22,6 +22,7 @@ type MockInvoiceUsecase struct {
 	CreateFunc             func(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error)
 	GetByIDFunc            func(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
 	GenerateInvoicePDFFunc func(ctx context.Context, invoiceID uuid.UUID) ([]byte, string, error)
+	QueueInvoicePDFGenerationFunc func(ctx context.Context, invoiceID uuid.UUID) error
 }
 
 func (m *MockInvoiceUsecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error) {
@@ -43,6 +44,13 @@ func (m *MockInvoiceUsecase) GenerateInvoicePDF(ctx context.Context, invoiceID u
 		return m.GenerateInvoicePDFFunc(ctx, invoiceID)
 	}
 	return nil, "", nil
+}
+
+func (m *MockInvoiceUsecase) QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error {
+	if m.QueueInvoicePDFGenerationFunc != nil {
+		return m.QueueInvoicePDFGenerationFunc(ctx, invoiceID)
+	}
+	return nil
 }
 
 func TestCreateInvoice_SanitizationAndValidation(t *testing.T) {

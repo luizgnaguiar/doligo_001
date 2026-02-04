@@ -211,6 +211,9 @@ type Invoice struct {
 	Date         time.Time  `gorm:"not null"`
 	TotalAmount  float64    `gorm:"type:numeric(15,4);not null"`
 	TotalCost    float64    `gorm:"type:numeric(15,4);not null"`
+	TotalTax     float64    `gorm:"type:numeric(15,4);not null;default:0"`
+	PDFStatus    string     `gorm:"size:20;default:'pending'"`
+	PDFUrl       string     `gorm:"type:text"`
 	Lines        []InvoiceLine `gorm:"foreignKey:InvoiceID"`
 }
 
@@ -225,6 +228,9 @@ type InvoiceLine struct {
 	Quantity    float64   `gorm:"type:numeric(15,4);not null"`
 	UnitPrice   float64   `gorm:"type:numeric(15,4);not null"`
 	UnitCost    float64   `gorm:"type:numeric(15,4);not null"`
+	TaxRate     float64   `gorm:"type:numeric(15,4);not null;default:0"`
+	TaxAmount   float64   `gorm:"type:numeric(15,4);not null;default:0"`
+	NetPrice    float64   `gorm:"type:numeric(15,4);not null;default:0"`
 	TotalAmount float64   `gorm:"type:numeric(15,4);not null"`
 	TotalCost   float64   `gorm:"type:numeric(15,4);not null"`
 }
