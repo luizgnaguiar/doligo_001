@@ -10,6 +10,8 @@ import (
 	"doligo_001/internal/domain/item"
 	"doligo_001/internal/domain/stock"
 	"doligo_001/internal/infrastructure/db"
+	"doligo_001/internal/api/middleware"
+	"doligo_001/internal/usecase"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -38,6 +40,7 @@ type stockUseCase struct {
 	warehouseRepo stock.WarehouseRepository
 	binRepo      stock.BinRepository
 	itemRepo     item.Repository
+	auditService usecase.AuditService
 }
 
 // NewUseCase creates a new stockUseCase.
@@ -49,6 +52,7 @@ func NewUseCase(
 	warehouseRepo stock.WarehouseRepository,
 	binRepo stock.BinRepository,
 	itemRepo item.Repository,
+	auditService usecase.AuditService,
 ) UseCase {
 	return &stockUseCase{
 		txManager:    txManager,
@@ -58,12 +62,15 @@ func NewUseCase(
 		warehouseRepo: warehouseRepo,
 		binRepo:      binRepo,
 		itemRepo:     itemRepo,
+		auditService: auditService,
 	}
 }
 
 // CreateStockMovement handles the logic for creating a stock movement atomically.
 func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error) {
 	var createdMovement *stock.StockMovement
+	var quantityBefore float64
+	var quantityAfter float64
 
 	// Explicitly check for zero UUID as a safeguard, though validation should catch it.
 	if binID == uuid.Nil {
@@ -121,13 +128,12 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 			return err
 		}
 
-		quantityBefore := 0.0
+		quantityBefore = 0.0
 		if currentStock != nil {
 			quantityBefore = currentStock.Quantity
 		}
 
 		// 2. Validate movement
-		var quantityAfter float64
 		if movementType == stock.MovementTypeOut {
 			if quantityBefore < quantity {
 				return ErrInsufficientStock
@@ -188,6 +194,15 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 
 		return txLedgerRepo.Create(ctx, ledgerEntry)
 	})
+
+	if err == nil {
+		userID, _ := domain.UserIDFromContext(ctx)
+		corrID, _ := middleware.FromContext(ctx)
+		uc.auditService.Log(ctx, userID, "stock", itemID.String(), "UPDATE",
+			map[string]interface{}{"quantity": quantityBefore},
+			map[string]interface{}{"quantity": quantityAfter},
+			corrID)
+	}
 
 	return createdMovement, err
 }

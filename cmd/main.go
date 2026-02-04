@@ -25,6 +25,7 @@ import (
 	"doligo_001/internal/infrastructure/metrics"
 	"doligo_001/internal/infrastructure/pdf"
 	"doligo_001/internal/infrastructure/repository"
+	"doligo_001/internal/usecase"
 	"doligo_001/internal/usecase/auth"
 	bom_uc "doligo_001/internal/usecase/bom"
 	invoice_uc "doligo_001/internal/usecase/invoice"
@@ -74,12 +75,14 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	stockLedgerRepo := repository.NewGormStockLedgerRepository(gormDB)
 	warehouseRepo := repository.NewGormWarehouseRepository(gormDB)
 	binRepo := repository.NewGormBinRepository(gormDB)
+	auditRepo := db.NewGormAuditRepository(gormDB)
 
 	// Usecases
-	authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24)
+	auditService := usecase.NewAuditService(auditRepo)
+	authUsecase := auth.NewAuthUsecase(userRepo, []byte(cfg.JWT.JWTSecret), time.Hour*24, auditService)
 	thirdPartyUsecase := thirdparty_uc.NewUsecase(thirdPartyRepo)
-	itemUsecase := item_uc.NewUsecase(itemRepo)
-	stockUsecase := stock_uc.NewUseCase(txManager, stockRepo, stockMoveRepo, stockLedgerRepo, warehouseRepo, binRepo, itemRepo)
+	itemUsecase := item_uc.NewUsecase(itemRepo, auditService)
+	stockUsecase := stock_uc.NewUseCase(txManager, stockRepo, stockMoveRepo, stockLedgerRepo, warehouseRepo, binRepo, itemRepo, auditService)
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	emailSender := email.NewSimpleEmailSender()

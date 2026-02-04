@@ -12,7 +12,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"doligo_001/internal/domain/identity"
-	"doligo_001/internal/api/middleware"
+	apiMiddleware "doligo_001/internal/api/middleware"
+	"doligo_001/internal/usecase"
 )
 
 // ErrInvalidCredentials is returned when the email or password is incorrect.
@@ -20,17 +21,19 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 
 // AuthUsecase implements the business logic for authentication.
 type AuthUsecase struct {
-	userRepo identity.UserRepository
-	jwtSecret []byte
-	jwtTTL    time.Duration
+	userRepo     identity.UserRepository
+	jwtSecret    []byte
+	jwtTTL       time.Duration
+	auditService usecase.AuditService
 }
 
 // NewAuthUsecase creates a new AuthUsecase.
-func NewAuthUsecase(userRepo identity.UserRepository, jwtSecret []byte, jwtTTL time.Duration) *AuthUsecase {
+func NewAuthUsecase(userRepo identity.UserRepository, jwtSecret []byte, jwtTTL time.Duration, auditService usecase.AuditService) *AuthUsecase {
 	return &AuthUsecase{
-		userRepo:  userRepo,
-		jwtSecret: jwtSecret,
-		jwtTTL:    jwtTTL,
+		userRepo:     userRepo,
+		jwtSecret:    jwtSecret,
+		jwtTTL:       jwtTTL,
+		auditService: auditService,
 	}
 }
 
@@ -54,7 +57,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (strin
 	}
 	
 	now := time.Now()
-	claims := &middleware.Claims{
+	claims := &apiMiddleware.Claims{
 		UserID:      user.ID,
 		Permissions: permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -69,6 +72,9 @@ func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (strin
 	if err != nil {
 		return "", err
 	}
+
+	corrID, _ := apiMiddleware.FromContext(ctx)
+	uc.auditService.Log(ctx, user.ID, "identity", user.ID.String(), "LOGIN", nil, nil, corrID)
 
 	return tokenString, nil
 }

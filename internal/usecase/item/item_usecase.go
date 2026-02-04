@@ -4,8 +4,10 @@ package item
 import (
 	"context"
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/middleware"
 	"doligo_001/internal/domain"
 	"doligo_001/internal/domain/item"
+	uc "doligo_001/internal/usecase"
 	"github.com/google/uuid"
 )
 
@@ -19,12 +21,16 @@ type Usecase interface {
 }
 
 type usecase struct {
-	repo item.Repository
+	repo         item.Repository
+	auditService uc.AuditService
 }
 
 // NewUsecase creates a new item usecase.
-func NewUsecase(repo item.Repository) Usecase {
-	return &usecase{repo: repo}
+func NewUsecase(repo item.Repository, auditService uc.AuditService) Usecase {
+	return &usecase{
+		repo:         repo,
+		auditService: auditService,
+	}
 }
 
 // Create handles the creation of a new item.
@@ -46,6 +52,10 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateItemRequest) (*item
 	if err := u.repo.Create(ctx, i); err != nil {
 		return nil, err
 	}
+
+	corrID, _ := middleware.FromContext(ctx)
+	u.auditService.Log(ctx, userID, "item", i.ID.String(), "CREATE", nil, i, corrID)
+
 	return i, nil
 }
 
@@ -58,11 +68,14 @@ func (u *usecase) GetByID(ctx context.Context, id uuid.UUID) (*item.Item, error)
 func (u *usecase) Update(ctx context.Context, id uuid.UUID, req *dto.UpdateItemRequest) (*item.Item, error) {
 	userID, _ := domain.UserIDFromContext(ctx)
 
-	i, err := u.repo.GetByID(ctx, id)
+	oldItem, err := u.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// Create a shallow copy for audit
+	oldValues := *oldItem
 
+	i := oldItem
 	i.Name = req.Name
 	i.Description = req.Description
 	i.Type = item.ItemType(req.Type)
@@ -74,12 +87,29 @@ func (u *usecase) Update(ctx context.Context, id uuid.UUID, req *dto.UpdateItemR
 	if err := u.repo.Update(ctx, i); err != nil {
 		return nil, err
 	}
+
+	corrID, _ := middleware.FromContext(ctx)
+	u.auditService.Log(ctx, userID, "item", i.ID.String(), "UPDATE", oldValues, i, corrID)
+
 	return i, nil
 }
 
 // Delete handles the deletion of an item.
 func (u *usecase) Delete(ctx context.Context, id uuid.UUID) error {
-	return u.repo.Delete(ctx, id)
+	userID, _ := domain.UserIDFromContext(ctx)
+	oldItem, err := u.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := u.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	corrID, _ := middleware.FromContext(ctx)
+	u.auditService.Log(ctx, userID, "item", id.String(), "DELETE", oldItem, nil, corrID)
+
+	return nil
 }
 
 // List retrieves all items.
