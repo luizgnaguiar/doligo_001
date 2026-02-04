@@ -92,7 +92,21 @@ func (u *bomUsecase) DeleteBOM(ctx context.Context, id uuid.UUID) error {
 }
 
 func (u *bomUsecase) CalculatePredictiveCost(ctx context.Context, bomID uuid.UUID) (float64, error) {
-	return 0, fmt.Errorf("CalculatePredictiveCost not implemented")
+	bom, err := u.bomRepo.GetByID(ctx, bomID)
+	if err != nil {
+		return 0, err
+	}
+
+	var totalCost float64
+	for _, comp := range bom.Components {
+		item, err := u.itemRepo.GetByID(ctx, comp.ComponentItemID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to fetch item %s: %w", comp.ComponentItemID, err)
+		}
+		totalCost += item.CostPrice * comp.Quantity
+	}
+
+	return totalCost, nil
 }
 
 func (u *bomUsecase) ProduceItem(ctx context.Context, bomID, warehouseID, userID uuid.UUID, productionQuantity float64) (uuid.UUID, float64, error) {
@@ -106,6 +120,7 @@ func (u *bomUsecase) ProduceItem(ctx context.Context, bomID, warehouseID, userID
 		txStockMoveRepo := u.stockMoveRepo.WithTx(tx)
 		txStockLedgerRepo := u.stockLedgerRepo.WithTx(tx)
 		txProductionRepo := u.productionRepo.WithTx(tx)
+		txItemRepo := u.itemRepo.WithTx(tx)
 
 		// 2. Fetch BOM
 		bom, err := txBomRepo.GetByID(ctx, bomID)
@@ -114,65 +129,74 @@ func (u *bomUsecase) ProduceItem(ctx context.Context, bomID, warehouseID, userID
 		}
 
 		now := time.Now()
+		var totalProductionCost float64
 
-		// 3. Process Components (Stock OUT)
+		// 3. Process Components (Stock OUT and Cost Calculation)
 		for _, comp := range bom.Components {
 			neededQty := comp.Quantity * productionQuantity
 
-			// Pessimistic Lock on component stock
-			// Assuming BinID is nil for simplification in ProduceItem as noted in SESSION_LOG
-			s, err := txStockRepo.GetStockForUpdate(ctx, comp.ComponentItemID, warehouseID, nil)
+			// Fetch Item to get CostPrice (captured within transaction)
+			componentItem, err := txItemRepo.GetByID(ctx, comp.ComponentItemID)
 			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return fmt.Errorf("insufficient stock for component %s: not found", comp.ComponentItemID)
+				return fmt.Errorf("failed to fetch item %s for cost calculation: %w", comp.ComponentItemID, err)
+			}
+			totalProductionCost += componentItem.CostPrice * neededQty
+
+			// Pessimistic Lock on component stock (only for Storable items)
+			if componentItem.Type == item.Storable {
+				s, err := txStockRepo.GetStockForUpdate(ctx, comp.ComponentItemID, warehouseID, nil)
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("insufficient stock for component %s: not found", comp.ComponentItemID)
+					}
+					return err
 				}
-				return err
-			}
 
-			if s.Quantity < neededQty {
-				return fmt.Errorf("insufficient stock for component %s: have %f, need %f", comp.ComponentItemID, s.Quantity, neededQty)
-			}
+				if s.Quantity < neededQty {
+					return fmt.Errorf("insufficient stock for component %s: have %f, need %f", comp.ComponentItemID, s.Quantity, neededQty)
+				}
 
-			oldQty := s.Quantity
-			s.Quantity -= neededQty
-			if err := txStockRepo.UpsertStock(ctx, s); err != nil {
-				return err
-			}
+				oldQty := s.Quantity
+				s.Quantity -= neededQty
+				if err := txStockRepo.UpsertStock(ctx, s); err != nil {
+					return err
+				}
 
-			// Create Stock Movement
-			move := &stock.StockMovement{
-				ID:          uuid.New(),
-				ItemID:      comp.ComponentItemID,
-				WarehouseID: warehouseID,
-				BinID:       nil,
-				Type:        stock.MovementTypeOut,
-				Quantity:    neededQty,
-				Reason:      fmt.Sprintf("Production of BOM %s", bomID),
-				HappenedAt:  now,
-				CreatedBy:   userID,
-			}
-			if err := txStockMoveRepo.Create(ctx, move); err != nil {
-				return err
-			}
+				// Create Stock Movement
+				move := &stock.StockMovement{
+					ID:          uuid.New(),
+					ItemID:      comp.ComponentItemID,
+					WarehouseID: warehouseID,
+					BinID:       nil,
+					Type:        stock.MovementTypeOut,
+					Quantity:    neededQty,
+					Reason:      fmt.Sprintf("Production of BOM %s", bomID),
+					HappenedAt:  now,
+					CreatedBy:   userID,
+				}
+				if err := txStockMoveRepo.Create(ctx, move); err != nil {
+					return err
+				}
 
-			// Create Ledger Entry
-			ledger := &stock.StockLedger{
-				ID:              uuid.New(),
-				StockMovementID: move.ID,
-				ItemID:          comp.ComponentItemID,
-				WarehouseID:     warehouseID,
-				BinID:           nil,
-				MovementType:    stock.MovementTypeOut,
-				QuantityChange:  neededQty,
-				QuantityBefore:  oldQty,
-				QuantityAfter:   s.Quantity,
-				Reason:          move.Reason,
-				HappenedAt:      now,
-				RecordedAt:      now,
-				RecordedBy:      userID,
-			}
-			if err := txStockLedgerRepo.Create(ctx, ledger); err != nil {
-				return err
+				// Create Ledger Entry
+				ledger := &stock.StockLedger{
+					ID:              uuid.New(),
+					StockMovementID: move.ID,
+					ItemID:          comp.ComponentItemID,
+					WarehouseID:     warehouseID,
+					BinID:           nil,
+					MovementType:    stock.MovementTypeOut,
+					QuantityChange:  neededQty,
+					QuantityBefore:  oldQty,
+					QuantityAfter:   s.Quantity,
+					Reason:          move.Reason,
+					HappenedAt:      now,
+					RecordedAt:      now,
+					RecordedBy:      userID,
+				}
+				if err := txStockLedgerRepo.Create(ctx, ledger); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -242,7 +266,7 @@ func (u *bomUsecase) ProduceItem(ctx context.Context, bomID, warehouseID, userID
 			BillOfMaterialsID:    bomID,
 			ProducedProductID:    bom.ProductID,
 			ProductionQuantity:   productionQuantity,
-			ActualProductionCost: 0, // Simplified for now
+			ActualProductionCost: totalProductionCost,
 			WarehouseID:          warehouseID,
 			ProducedAt:           now,
 			CreatedBy:            userID,
@@ -259,7 +283,11 @@ func (u *bomUsecase) ProduceItem(ctx context.Context, bomID, warehouseID, userID
 	if err == nil {
 		corrID, _ := middleware.FromContext(ctx)
 		u.auditService.Log(ctx, userID, "production", productionRecordID.String(), "CREATE",
-			nil, map[string]interface{}{"bom_id": bomID, "quantity": productionQuantity},
+			nil, map[string]interface{}{
+				"bom_id":      bomID,
+				"quantity":    productionQuantity,
+				"actual_cost": actualProductionCost,
+			},
 			corrID)
 	}
 
