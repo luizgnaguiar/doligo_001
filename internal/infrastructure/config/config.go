@@ -16,6 +16,7 @@ type Config struct {
 	InternalWorker InternalWorkerConfig `mapstructure:",squash"`
 	JWT            AuthConfig     `mapstructure:",squash"`
 	RateLimit      RateLimitConfig `mapstructure:",squash"`
+	Security       SecurityConfig  `mapstructure:",squash"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -42,6 +43,13 @@ type RateLimitConfig struct {
 	Enabled           bool `mapstructure:"RATE_LIMIT_ENABLED"`
 	RequestsPerSecond int  `mapstructure:"RATE_LIMIT_REQUESTS_PER_SECOND"`
 	Burst             int  `mapstructure:"RATE_LIMIT_BURST"`
+}
+
+// SecurityConfig holds security-related configuration
+type SecurityConfig struct {
+	CORSAllowedOrigins []string `mapstructure:"CORS_ALLOWED_ORIGINS"`
+	CORSAllowCredentials bool    `mapstructure:"CORS_ALLOW_CREDENTIALS"`
+	SecurityHeadersEnabled bool  `mapstructure:"SECURITY_HEADERS_ENABLED"`
 }
 
 // InternalWorkerConfig holds configuration for the internal task runner
@@ -76,6 +84,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("RATE_LIMIT_ENABLED", false)
 	viper.SetDefault("RATE_LIMIT_REQUESTS_PER_SECOND", 10)
 	viper.SetDefault("RATE_LIMIT_BURST", 20)
+	viper.SetDefault("CORS_ALLOWED_ORIGINS", []string{"*"})
+	viper.SetDefault("CORS_ALLOW_CREDENTIALS", true)
+	viper.SetDefault("SECURITY_HEADERS_ENABLED", true)
 
 
 	viper.AutomaticEnv() // Read from environment variables

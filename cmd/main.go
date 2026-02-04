@@ -164,6 +164,22 @@ func main() {
 	e.Validator = validator.NewValidator()
 	e.Use(middleware.Recover())
 
+	// Security Middleware
+	if cfg.Security.SecurityHeadersEnabled {
+		e.Use(apiMiddleware.SecurityHeadersMiddleware())
+		slog.Info("Security Headers middleware enabled")
+	}
+
+	// CORS Middleware
+	if len(cfg.Security.CORSAllowedOrigins) > 0 {
+		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+			AllowOrigins:     cfg.Security.CORSAllowedOrigins,
+			AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
+			AllowCredentials: cfg.Security.CORSAllowCredentials,
+		}))
+		slog.Info("CORS middleware enabled", "origins", cfg.Security.CORSAllowedOrigins)
+	}
+
 	// Basic health check available immediately
 	e.GET("/health", func(c echo.Context) error {
 		return c.String(http.StatusOK, "OK")

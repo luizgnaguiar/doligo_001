@@ -269,3 +269,45 @@
   ```
   RATE_LIMIT_BURST=40
   ```
+
+---
+
+## 20. CORS_ALLOWED_ORIGINS
+
+- **Descrição**: Lista de origens permitidas para acessar a API (Cross-Origin Resource Sharing).
+- **Tipo**: string (lista separada por vírgula ou espaço dependendo da implementação, viper lida automaticamente com mapeamento para []string se configurado corretamente)
+- **Obrigatório**: NÃO
+- **Valor Default**: `*`
+- **Impacto se Ausente**: Todas as origens serão permitidas (padrão de segurança baixo).
+- **Exemplo**:
+  ```
+  CORS_ALLOWED_ORIGINS="https://meu-erp.com,https://admin.meu-erp.com"
+  ```
+
+---
+
+## 21. CORS_ALLOW_CREDENTIALS
+
+- **Descrição**: Indica se a API deve expor headers de credenciais (cookies, auth headers) para o browser.
+- **Tipo**: bool
+- **Obrigatório**: NÃO
+- **Valor Default**: `true`
+- **Impacto se Ausente**: Padrão é true.
+- **Exemplo**:
+  ```
+  CORS_ALLOW_CREDENTIALS=true
+  ```
+
+---
+
+## 22. SECURITY_HEADERS_ENABLED
+
+- **Descrição**: Habilita a injeção de headers de segurança (HSTS, CSP, X-Frame-Options, etc.).
+- **Tipo**: bool
+- **Obrigatório**: NÃO
+- **Valor Default**: `true`
+- **Impacto se Ausente**: Padrão é true. Se false, headers não serão injetados.
+- **Exemplo**:
+  ```
+  SECURITY_HEADERS_ENABLED=false
+  ```
