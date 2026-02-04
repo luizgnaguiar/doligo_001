@@ -45,6 +45,7 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 
 	var totalAmount float64
 	var totalCost float64
+	var totalTax float64
 
 	for _, lineReq := range req.Lines {
 		itemID, _ := uuid.Parse(lineReq.ItemID)
@@ -52,6 +53,12 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 		if err != nil {
 			return nil, err
 		}
+
+		// Calculate tax (assuming TaxRate is percentage, e.g. 10 for 10%)
+		taxAmount := lineReq.UnitPrice * (lineReq.TaxRate / 100)
+		netPrice := lineReq.UnitPrice + taxAmount
+		lineTotalAmount := lineReq.Quantity * netPrice
+		lineTotalTax := lineReq.Quantity * taxAmount
 
 		line := invoice.InvoiceLine{
 			ID:          uuid.New(),
@@ -61,16 +68,21 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 			Quantity:    lineReq.Quantity,
 			UnitPrice:   lineReq.UnitPrice,
 			UnitCost:    item.CostPrice,
-			TotalAmount: lineReq.Quantity * lineReq.UnitPrice,
+			TaxRate:     lineReq.TaxRate,
+			TaxAmount:   taxAmount,
+			NetPrice:    netPrice,
+			TotalAmount: lineTotalAmount,
 			TotalCost:   lineReq.Quantity * item.CostPrice,
 		}
 		totalAmount += line.TotalAmount
 		totalCost += line.TotalCost
+		totalTax += lineTotalTax
 		newInvoice.Lines = append(newInvoice.Lines, line)
 	}
 
 	newInvoice.TotalAmount = totalAmount
 	newInvoice.TotalCost = totalCost
+	newInvoice.TotalTax = totalTax
 
 	newInvoice.SetCreatedBy(userID)
 	newInvoice.SetUpdatedBy(userID)

@@ -32,7 +32,8 @@ func (r *GormMarginRepository) GetMarginReport(ctx context.Context, productID uu
 			il.item_id AS product_id,
 			i.name AS product_name,
 			SUM(il.total_cost) AS total_input_cost,
-			SUM(il.total_amount) AS total_selling_price
+			SUM(il.total_amount) AS total_selling_price,
+			SUM(il.tax_amount * il.quantity) AS total_taxes
 		FROM invoice_lines il
 		JOIN items i ON il.item_id = i.id
 		JOIN invoices inv ON il.invoice_id = inv.id
@@ -46,6 +47,7 @@ func (r *GormMarginRepository) GetMarginReport(ctx context.Context, productID uu
 		ProductName       string    `gorm:"column:product_name"`
 		TotalInputCost    float64   `gorm:"column:total_input_cost"`
 		TotalSellingPrice float64   `gorm:"column:total_selling_price"`
+		TotalTaxes        float64   `gorm:"column:total_taxes"`
 	}
 
 	err := r.db.WithContext(ctx).Raw(query, productID, startDate, endDate).Scan(&result).Error
@@ -63,7 +65,7 @@ func (r *GormMarginRepository) GetMarginReport(ctx context.Context, productID uu
 		ProductName:       result.ProductName,
 		TotalInputCost:    result.TotalInputCost,
 		TotalServiceCost:  0, // Technical Debt: Service costs are not yet tracked.
-		TotalTaxes:        0, // Technical Debt: Taxes are not yet implemented in invoices.
+		TotalTaxes:        result.TotalTaxes,
 		TotalSellingPrice: result.TotalSellingPrice,
 	}
 
@@ -82,7 +84,8 @@ func (r *GormMarginRepository) ListMarginReports(ctx context.Context, startDate,
 			il.item_id AS product_id,
 			i.name AS product_name,
 			SUM(il.total_cost) AS total_input_cost,
-			SUM(il.total_amount) AS total_selling_price
+			SUM(il.total_amount) AS total_selling_price,
+			SUM(il.tax_amount * il.quantity) AS total_taxes
 		FROM invoice_lines il
 		JOIN items i ON il.item_id = i.id
 		JOIN invoices inv ON il.invoice_id = inv.id
@@ -96,6 +99,7 @@ func (r *GormMarginRepository) ListMarginReports(ctx context.Context, startDate,
 		ProductName       string    `gorm:"column:product_name"`
 		TotalInputCost    float64   `gorm:"column:total_input_cost"`
 		TotalSellingPrice float64   `gorm:"column:total_selling_price"`
+		TotalTaxes        float64   `gorm:"column:total_taxes"`
 	}
 
 	err := r.db.WithContext(ctx).Raw(query, startDate, endDate).Scan(&results).Error
@@ -112,7 +116,7 @@ func (r *GormMarginRepository) ListMarginReports(ctx context.Context, startDate,
 			ProductName:       result.ProductName,
 			TotalInputCost:    result.TotalInputCost,
 			TotalServiceCost:  0, // Technical Debt: Not tracked.
-			TotalTaxes:        0, // Technical Debt: Not tracked.
+			TotalTaxes:        result.TotalTaxes,
 			TotalSellingPrice: result.TotalSellingPrice,
 		}
 		report.GrossMargin = report.TotalSellingPrice - (report.TotalInputCost + report.TotalServiceCost + report.TotalTaxes)

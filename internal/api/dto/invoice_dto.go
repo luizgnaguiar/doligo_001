@@ -26,6 +26,7 @@ type CreateInvoiceLineRequest struct {
 	Description string  `json:"description" validate:"required"`
 	Quantity    float64 `json:"quantity" validate:"required,gt=0"`
 	UnitPrice   float64 `json:"unit_price" validate:"required,gte=0"`
+	TaxRate     float64 `json:"tax_rate" validate:"gte=0"`
 }
 
 func (r *CreateInvoiceLineRequest) Sanitize() {
@@ -39,6 +40,7 @@ type InvoiceResponse struct {
 	Date         time.Time           `json:"date"`
 	TotalAmount  float64             `json:"total_amount"`
 	TotalCost    float64             `json:"total_cost"`
+	TotalTax     float64             `json:"total_tax"`
 	Lines        []InvoiceLineResponse `json:"lines"`
 	CreatedAt    time.Time           `json:"created_at"`
 	UpdatedAt    time.Time           `json:"updated_at"`
@@ -51,6 +53,9 @@ type InvoiceLineResponse struct {
 	Quantity    float64   `json:"quantity"`
 	UnitPrice   float64   `json:"unit_price"`
 	UnitCost    float64   `json:"unit_cost"`
+	TaxRate     float64   `json:"tax_rate"`
+	TaxAmount   float64   `json:"tax_amount"`
+	NetPrice    float64   `json:"net_price"`
 	TotalAmount float64   `json:"total_amount"`
 	TotalCost   float64   `json:"total_cost"`
 	CreatedAt   time.Time `json:"created_at"`

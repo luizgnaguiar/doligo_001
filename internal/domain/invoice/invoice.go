@@ -14,6 +14,7 @@ type Invoice struct {
 	Date            time.Time
 	TotalAmount     float64
 	TotalCost       float64
+	TotalTax        float64
 	Lines           []InvoiceLine
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -37,6 +38,9 @@ type InvoiceLine struct {
 	Quantity    float64
 	UnitPrice   float64
 	UnitCost    float64
+	TaxRate     float64
+	TaxAmount   float64
+	NetPrice    float64
 	TotalAmount float64
 	TotalCost   float64
 	CreatedAt   time.Time
