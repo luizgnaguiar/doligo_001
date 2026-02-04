@@ -36,23 +36,18 @@ func NewMarginHandler(mu marginUseCase.MarginUsecase) *MarginHandler {
 // @Failure 500 {object} dto.ErrorResponse
 // @Router /margin/products/{productID} [get]
 func (h *MarginHandler) GetProductMarginReport(c echo.Context) error {
-	productIDStr := c.Param("productID")
-	productID, err := uuid.Parse(productIDStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid product ID format"})
+	var req dto.ProductMarginReportRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request parameters", Details: err.Error()})
 	}
 
-	startDateStr := c.QueryParam("startDate")
-	endDateStr := c.QueryParam("endDate")
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Validation failed", Details: err.Error()})
+	}
 
-	startDate, err := time.Parse("2006-01-02", startDateStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid start date format. Use YYYY-MM-DD"})
-	}
-	endDate, err := time.Parse("2006-01-02", endDateStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid end date format. Use YYYY-MM-DD"})
-	}
+	productID, _ := uuid.Parse(req.ProductID) // Already validated
+	startDate, _ := time.Parse("2006-01-02", req.StartDate)
+	endDate, _ := time.Parse("2006-01-02", req.EndDate)
 
 	report, err := h.marginUsecase.GetProductMarginReport(c.Request().Context(), productID, startDate, endDate)
 	if err != nil {
@@ -78,17 +73,17 @@ func (h *MarginHandler) GetProductMarginReport(c echo.Context) error {
 // @Failure 500 {object} dto.ErrorResponse
 // @Router /margin [get]
 func (h *MarginHandler) ListOverallMarginReports(c echo.Context) error {
-	startDateStr := c.QueryParam("startDate")
-	endDateStr := c.QueryParam("endDate")
+	var req dto.OverallMarginReportRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request parameters", Details: err.Error()})
+	}
 
-	startDate, err := time.Parse("2006-01-02", startDateStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid start date format. Use YYYY-MM-DD"})
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Validation failed", Details: err.Error()})
 	}
-	endDate, err := time.Parse("2006-01-02", endDateStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid end date format. Use YYYY-MM-DD"})
-	}
+
+	startDate, _ := time.Parse("2006-01-02", req.StartDate)
+	endDate, _ := time.Parse("2006-01-02", req.EndDate)
 
 	reports, err := h.marginUsecase.ListOverallMarginReports(c.Request().Context(), startDate, endDate)
 	if err != nil {
