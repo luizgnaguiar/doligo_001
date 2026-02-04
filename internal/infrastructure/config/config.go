@@ -15,6 +15,7 @@ type Config struct {
 	Log            LogConfig      `mapstructure:",squash"`
 	InternalWorker InternalWorkerConfig `mapstructure:",squash"`
 	JWT            AuthConfig     `mapstructure:",squash"`
+	RateLimit      RateLimitConfig `mapstructure:",squash"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -34,6 +35,13 @@ type DatabaseConfig struct {
 // LogConfig holds logging-related configuration
 type LogConfig struct {
 	Level string `mapstructure:"LOG_LEVEL"`
+}
+
+// RateLimitConfig holds rate limiting configuration
+type RateLimitConfig struct {
+	Enabled           bool `mapstructure:"RATE_LIMIT_ENABLED"`
+	RequestsPerSecond int  `mapstructure:"RATE_LIMIT_REQUESTS_PER_SECOND"`
+	Burst             int  `mapstructure:"RATE_LIMIT_BURST"`
 }
 
 // InternalWorkerConfig holds configuration for the internal task runner
@@ -65,6 +73,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("INTERNAL_WORKER_POOL_SIZE", 5)
 	viper.SetDefault("INTERNAL_WORKER_SHUTDOWN_TIMEOUT", 15 * time.Second)
 	viper.SetDefault("JWT_SECRET", "super-secret-jwt-key")
+	viper.SetDefault("RATE_LIMIT_ENABLED", false)
+	viper.SetDefault("RATE_LIMIT_REQUESTS_PER_SECOND", 10)
+	viper.SetDefault("RATE_LIMIT_BURST", 20)
 
 
 	viper.AutomaticEnv() // Read from environment variables

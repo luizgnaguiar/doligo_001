@@ -1,6 +1,6 @@
 # Variáveis de Ambiente
 
-**Versão**: 1.0.0  
+**Versão**: 1.0.1  
 **Data**: 2026-02-03
 **Escopo**: Aplicação completa
 
@@ -226,4 +226,46 @@
 - **Exemplo**:
   ```
   JWT_SECRET=uma_chave_secreta_longa_e_dificil_de_adivinhar
+  ```
+
+---
+
+## 17. RATE_LIMIT_ENABLED
+
+- **Descrição**: Habilita ou desabilita o middleware de Rate Limiting.
+- **Tipo**: bool
+- **Obrigatório**: NÃO
+- **Valor Default**: `false`
+- **Impacto se Ausente**: Rate limiting estará desligado.
+- **Exemplo**:
+  ```
+  RATE_LIMIT_ENABLED=true
+  ```
+
+---
+
+## 18. RATE_LIMIT_REQUESTS_PER_SECOND
+
+- **Descrição**: Número máximo de requisições permitidas por segundo (sustentado) por IP.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `10`
+- **Impacto se Ausente**: Utilizará o valor padrão de 10 RPS.
+- **Exemplo**:
+  ```
+  RATE_LIMIT_REQUESTS_PER_SECOND=20
+  ```
+
+---
+
+## 19. RATE_LIMIT_BURST
+
+- **Descrição**: Número máximo de requisições instantâneas permitidas (burst) por IP.
+- **Tipo**: int
+- **Obrigatório**: NÃO
+- **Valor Default**: `20`
+- **Impacto se Ausente**: Utilizará o valor padrão de burst 20.
+- **Exemplo**:
+  ```
+  RATE_LIMIT_BURST=40
   ```

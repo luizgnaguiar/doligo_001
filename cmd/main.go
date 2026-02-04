@@ -182,6 +182,14 @@ func main() {
 		} else {
 			// Setup middlewares that depend on services
 			e.Use(apiMiddleware.RequestLogger)
+
+			// Rate Limiter
+			if cfg.RateLimit.Enabled {
+				limiter := apiMiddleware.NewRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
+				e.Use(limiter.Middleware())
+				slog.Info("Rate Limiter enabled", "rps", cfg.RateLimit.RequestsPerSecond, "burst", cfg.RateLimit.Burst)
+			}
+
 			e.Use(apiMiddleware.MetricsMiddleware(appMetrics))
 		}
 	}()
