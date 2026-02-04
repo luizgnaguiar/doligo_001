@@ -5,6 +5,7 @@ import (
 	"time"
 	"github.com/google/uuid"
 	"doligo_001/internal/domain/stock"
+	"doligo_001/internal/api/sanitizer"
 )
 
 // --- Warehouse DTOs ---
@@ -13,9 +14,17 @@ type CreateWarehouseRequest struct {
 	Name string `json:"name" validate:"required,min=2,max=255"`
 }
 
+func (r *CreateWarehouseRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+}
+
 type UpdateWarehouseRequest struct {
 	Name     string `json:"name" validate:"required,min=2,max=255"`
 	IsActive bool   `json:"is_active"`
+}
+
+func (r *UpdateWarehouseRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
 }
 
 type WarehouseResponse struct {
@@ -44,9 +53,17 @@ type CreateBinRequest struct {
 	WarehouseID string `json:"warehouse_id" validate:"required,uuid"`
 }
 
+func (r *CreateBinRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+}
+
 type UpdateBinRequest struct {
 	Name     string `json:"name" validate:"required,min=2,max=255"`
 	IsActive bool   `json:"is_active"`
+}
+
+func (r *UpdateBinRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
 }
 
 type BinResponse struct {
@@ -79,6 +96,10 @@ type CreateStockMovementRequest struct {
 	Type        string  `json:"type" validate:"required,oneof=IN OUT"`
 	Quantity    float64 `json:"quantity" validate:"required,gt=0"`
 	Reason      string  `json:"reason" validate:"max=255"`
+}
+
+func (r *CreateStockMovementRequest) Sanitize() {
+	r.Reason = sanitizer.SanitizeString(r.Reason)
 }
 
 type StockMovementResponse struct {

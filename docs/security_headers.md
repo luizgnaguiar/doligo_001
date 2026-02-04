@@ -1,12 +1,12 @@
 # Política de Headers de Segurança
 
-**Versão**: 1.0.0
-**Data**: 2026-02-03
-**Status**: Implementado (Fase 13.3)
+**Versão**: 1.1.0
+**Data**: 2026-02-04
+**Status**: Implementado (Fase 13.6)
 
 ---
 
-Este documento detalha os headers HTTP de segurança injetados automaticamente em todas as respostas da API para mitigar vetores de ataque comuns baseados em browser.
+Este documento detalha os headers HTTP de segurança injetados automaticamente em todas as respostas da API para mitigar vetores de ataque comuns baseados em browser, bem como a política de sanitização de dados.
 
 ## Headers Implementados
 
@@ -36,6 +36,14 @@ Este documento detalha os headers HTTP de segurança injetados automaticamente e
 - **Observação**: Esta é uma política básica. Para aplicações frontend complexas, ela deve ser refinada.
 - **Referência**: [MDN Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy)
 
+## Sanitização de Input (Defesa em Profundidade)
+
+Além dos headers de segurança, o sistema implementa uma camada automática de sanitização de entrada para prevenir Persisted XSS e Injection Attacks:
+
+- **Automação**: O processo de *Binding* dos dados da requisição invoca automaticamente métodos de sanitização para campos de texto (string).
+- **Política**: Utiliza a biblioteca `bluemonday` com política estrita (`StrictPolicy`), removendo todas as tags HTML e prevenindo a injeção de scripts maliciosos.
+- **Escopo**: Todos os DTOs de entrada (Requests) que implementam a interface `Sanitizable`.
+
 ## Configuração
 
 A injeção destes headers é controlada pela variável de ambiente:
@@ -46,4 +54,4 @@ SECURITY_HEADERS_ENABLED=true  # Default: true
 
 ## Middleware
 
-A implementação reside em `internal/api/middleware/security_headers.go` e é aplicada globalmente no entrypoint da aplicação (`cmd/main.go`).
+A implementação reside em `internal/api/middleware/security_headers.go` e é aplicada globalmente no entrypoint da aplicação (`cmd/main.go`). A sanitização é aplicada via Custom Binder configurado na inicialização do servidor Echo.

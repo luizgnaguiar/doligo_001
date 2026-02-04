@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"doligo_001/internal/api/dto"
-	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/api/validator"
 	"doligo_001/internal/domain" // For domain.UserIDFromContext
 	"doligo_001/internal/domain/bom"
@@ -35,9 +34,6 @@ func (h *BOMHandler) CreateBOM(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	
-	// Sanitization
-	req.Name = sanitizer.SanitizeString(req.Name)
-
 	if err := h.validator.Validate(req); err != nil {
 		return err // validator already returns echo.HTTPError
 	}
@@ -54,8 +50,6 @@ func (h *BOMHandler) CreateBOM(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invalid Component Item ID")
 		}
 		
-		compReq.UnitOfMeasure = sanitizer.SanitizeString(compReq.UnitOfMeasure)
-
 		components[i] = bom.BillOfMaterialsComponent{
 			ID:              uuid.New(), // ID will be overridden by DB on creation
 			ComponentItemID: compID,
@@ -156,9 +150,6 @@ func (h *BOMHandler) UpdateBOM(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	
-	// Sanitization
-	req.Name = sanitizer.SanitizeString(req.Name)
-
 	if err := h.validator.Validate(req); err != nil {
 		return err
 	}
@@ -188,7 +179,6 @@ func (h *BOMHandler) UpdateBOM(c echo.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invalid Component Item ID")
 		}
-		compReq.UnitOfMeasure = sanitizer.SanitizeString(compReq.UnitOfMeasure)
 
 		newComponents[i] = bom.BillOfMaterialsComponent{
 			ComponentItemID: compID,
@@ -332,4 +322,5 @@ func toBOMResponse(b *bom.BillOfMaterials) dto.BOMResponse {
 		UpdatedBy:  b.UpdatedBy,
 	}
 }
+
 

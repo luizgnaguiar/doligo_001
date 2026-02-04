@@ -27,3 +27,8 @@ func SanitizeString(s string) string {
 	sanitized := getPolicy().Sanitize(s)
 	return strings.TrimSpace(sanitized)
 }
+
+// Sanitizable interface should be implemented by DTOs that need sanitization.
+type Sanitizable interface {
+	Sanitize()
+}

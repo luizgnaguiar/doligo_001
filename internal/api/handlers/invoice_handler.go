@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"doligo_001/internal/api/dto"
-	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/usecase/invoice"
 )
 
@@ -24,12 +23,6 @@ func (h *InvoiceHandler) CreateInvoice(c echo.Context) error {
 	var req dto.CreateInvoiceRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	// Sanitization
-	req.Number = sanitizer.SanitizeString(req.Number)
-	for i := range req.Lines {
-		req.Lines[i].Description = sanitizer.SanitizeString(req.Lines[i].Description)
 	}
 
 	if err := c.Validate(&req); err != nil {

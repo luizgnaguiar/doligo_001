@@ -1,7 +1,7 @@
 # Variáveis de Ambiente
 
-**Versão**: 1.0.1  
-**Data**: 2026-02-03
+**Versão**: 1.1.0  
+**Data**: 2026-02-04
 **Escopo**: Aplicação completa
 
 ---

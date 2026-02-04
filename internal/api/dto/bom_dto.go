@@ -1,6 +1,9 @@
 package dto
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"doligo_001/internal/api/sanitizer"
+)
 
 // CreateBOMRequest represents the request body for creating a new Bill of Materials.
 type CreateBOMRequest struct {
@@ -10,12 +13,23 @@ type CreateBOMRequest struct {
 	Components []BOMComponentRequest `json:"components" validate:"required,min=1"`
 }
 
+func (r *CreateBOMRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+	for i := range r.Components {
+		r.Components[i].Sanitize()
+	}
+}
+
 // BOMComponentRequest represents a single component within a BOM creation request.
 type BOMComponentRequest struct {
 	ComponentItemID string  `json:"component_item_id" validate:"required,uuid"`
 	Quantity        float64 `json:"quantity" validate:"required,gt=0"`
 	UnitOfMeasure   string  `json:"unit_of_measure" validate:"required"`
 	IsActive        bool    `json:"is_active"`
+}
+
+func (r *BOMComponentRequest) Sanitize() {
+	r.UnitOfMeasure = sanitizer.SanitizeString(r.UnitOfMeasure)
 }
 
 // BOMResponse represents the response body for a Bill of Materials.

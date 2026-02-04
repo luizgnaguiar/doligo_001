@@ -12,8 +12,13 @@ import (
 	"doligo_001/internal/infrastructure/logger"
 )
 
+type clientLimiter struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 type rateLimiter struct {
-	limiters map[string]*rate.Limiter
+	limiters map[string]*clientLimiter
 	mu       sync.RWMutex
 	rate     rate.Limit
 	burst    int
@@ -23,7 +28,7 @@ type rateLimiter struct {
 func NewRateLimiter(requestsPerSecond int, burst int) *rateLimiter {
 	// Start a cleanup goroutine to remove stale limiters
 	rl := &rateLimiter{
-		limiters: make(map[string]*rate.Limiter),
+		limiters: make(map[string]*clientLimiter),
 		rate:     rate.Limit(requestsPerSecond),
 		burst:    burst,
 	}
@@ -35,13 +40,16 @@ func (rl *rateLimiter) getLimiter(ip string) *rate.Limiter {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	limiter, exists := rl.limiters[ip]
+	client, exists := rl.limiters[ip]
 	if !exists {
-		limiter = rate.NewLimiter(rl.rate, rl.burst)
-		rl.limiters[ip] = limiter
+		client = &clientLimiter{
+			limiter: rate.NewLimiter(rl.rate, rl.burst),
+		}
+		rl.limiters[ip] = client
 	}
 
-	return limiter
+	client.lastSeen = time.Now()
+	return client.limiter
 }
 
 // Middleware returns the Echo middleware function.
@@ -73,25 +81,17 @@ func (rl *rateLimiter) Middleware() echo.MiddlewareFunc {
 }
 
 // cleanupStale periodically removes limiters that haven't been used recently.
-// This is a simple implementation to prevent memory leaks.
 func (rl *rateLimiter) cleanupStale() {
 	ticker := time.NewTicker(10 * time.Minute)
 	go func() {
 		for range ticker.C {
-			// In a real implementation, we would need to track last access time for each IP.
-			// Since rate.Limiter doesn't expose last access time easily without wrapping,
-			// and for the scope of this task "cleanup" was optional/suggested as simplified,
-			// we will just clear the map if it gets too large or leave it for now as a basic implementation.
-			// However, to strictly follow the "clean up stale" requirement if I implement it:
-			
-			// A simple strategy without wrapping:
-			// If the map is growing too large, we can purge it.
 			rl.mu.Lock()
-			if len(rl.limiters) > 10000 {
-				// Emergency purge if it gets too big
-				rl.limiters = make(map[string]*rate.Limiter)
-				slog.Info("Rate limiter map purged due to size limit")
+			for ip, client := range rl.limiters {
+				if time.Since(client.lastSeen) > 10*time.Minute {
+					delete(rl.limiters, ip)
+				}
 			}
+			slog.Info("Rate limiter cleanup completed", "active_ips", len(rl.limiters))
 			rl.mu.Unlock()
 		}
 	}()

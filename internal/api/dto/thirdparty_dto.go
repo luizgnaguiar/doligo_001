@@ -5,6 +5,7 @@ import (
 	"time"
 	"github.com/google/uuid"
 	"doligo_001/internal/domain/thirdparty"
+	"doligo_001/internal/api/sanitizer"
 )
 
 // CreateThirdPartyRequest defines the structure for creating a new third party.
@@ -14,12 +15,22 @@ type CreateThirdPartyRequest struct {
 	Type  string `json:"type" validate:"required,oneof=CUSTOMER SUPPLIER"`
 }
 
+func (r *CreateThirdPartyRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+	r.Email = sanitizer.SanitizeString(r.Email)
+}
+
 // UpdateThirdPartyRequest defines the structure for updating an existing third party.
 type UpdateThirdPartyRequest struct {
 	Name     string `json:"name" validate:"required,min=2,max=255"`
 	Email    string `json:"email" validate:"required,email"`
 	Type     string `json:"type" validate:"required,oneof=CUSTOMER SUPPLIER"`
 	IsActive bool   `json:"is_active"`
+}
+
+func (r *UpdateThirdPartyRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+	r.Email = sanitizer.SanitizeString(r.Email)
 }
 
 // ThirdPartyResponse defines the structure for a third party response.

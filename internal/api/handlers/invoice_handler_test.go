@@ -10,6 +10,7 @@ import (
 
 	"doligo_001/internal/api/dto"
 	"doligo_001/internal/api/validator"
+	"doligo_001/internal/api/binder"
 	"doligo_001/internal/domain/invoice"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -47,6 +48,7 @@ func (m *MockInvoiceUsecase) GenerateInvoicePDF(ctx context.Context, invoiceID u
 func TestCreateInvoice_SanitizationAndValidation(t *testing.T) {
 	e := echo.New()
 	e.Validator = validator.NewValidator()
+	e.Binder = &binder.CustomBinder{DefaultBinder: &echo.DefaultBinder{}}
 	mockUsecase := &MockInvoiceUsecase{}
 	handler := NewInvoiceHandler(mockUsecase)
 

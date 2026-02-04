@@ -11,6 +11,7 @@ import (
 	"doligo_001/internal/api/dto"
 	"doligo_001/internal/api/handlers"
 	"doligo_001/internal/api/validator"
+	"doligo_001/internal/api/binder"
 	domainItem "doligo_001/internal/domain/item"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -54,6 +55,7 @@ func (m *MockItemUsecase) List(ctx context.Context) ([]*domainItem.Item, error) 
 func TestItemSanitization(t *testing.T) {
 	e := echo.New()
 	e.Validator = validator.NewValidator()
+	e.Binder = &binder.CustomBinder{DefaultBinder: &echo.DefaultBinder{}}
 	
 	mockUsecase := new(MockItemUsecase)
 	h := handlers.NewItemHandler(mockUsecase)

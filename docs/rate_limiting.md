@@ -1,8 +1,8 @@
 # Rate Limiting
 
-**Versão**: 1.0.0
-**Data**: 2026-02-03
-**Status**: Implementado (Fase 13.2)
+**Versão**: 1.1.0
+**Data**: 2026-02-04
+**Status**: Implementado (Fase 13.6)
 
 ## Visão Geral
 
@@ -12,7 +12,7 @@ O sistema implementa um mecanismo de **Rate Limiting (Limitação de Taxa)** par
 
 - **Biblioteca**: `golang.org/x/time/rate` (Token Bucket algorithm).
 - **Escopo**: Global (aplicado a todas as rotas da API).
-- **Armazenamento**: Mapa em memória (`map[string]*rate.Limiter`), onde a chave é o IP do cliente.
+- **Armazenamento**: Mapa em memória (`map[string]*clientLimiter`), onde a chave é o IP do cliente.
 - **Identificação**: O IP é obtido via `c.RealIP()`, que respeita headers como `X-Forwarded-For` e `X-Real-IP`.
 
 ## Configuração
@@ -53,6 +53,14 @@ Requisições bloqueadas são registradas com nível `WARN`:
 level=WARN msg="Rate limit exceeded" ip=203.0.113.1 path=/api/v1/invoices correlation_id=...
 ```
 
+## Gestão de Recursos (Cleanup)
+
+Para prevenir vazamento de memória (memory leaks) decorrente do armazenamento de limitadores para IPs que não interagem mais com o sistema:
+
+- **Rastreamento**: Cada limitador armazena a data/hora da última requisição (`lastSeen`).
+- **Limpeza Automática**: Uma goroutine executa a cada 10 minutos.
+- **Política**: Limitadores de IPs inativos há mais de 10 minutos são removidos da memória.
+
 ## Considerações para Proxies Reversos
 
 O middleware utiliza `echo.Context.RealIP()` para determinar o endereço IP do cliente. Esta função é capaz de ler headers como `X-Forwarded-For`.
@@ -61,6 +69,5 @@ O middleware utiliza `echo.Context.RealIP()` para determinar o endereço IP do c
 
 ## Limitações (Dívida Técnica)
 
-1. **Memória**: Como o armazenamento é em memória local, em um ambiente com múltiplas instâncias (Kubernetes com N réplicas), o limite efetivo será `N * Limite Configurado`.
+1. **Memória Distribuída**: Como o armazenamento é em memória local, em um ambiente com múltiplas instâncias (Kubernetes com N réplicas), o limite efetivo será `N * Limite Configurado` e não haverá sincronismo entre nós (ex: Redis).
 2. **Persistência**: O estado dos limitadores é perdido ao reiniciar a aplicação.
-3. **Limpeza**: Existe um mecanismo simplificado de limpeza que purga todos os limitadores se o número de IPs rastreados exceder 10.000, para evitar memory leaks extremos. Uma estratégia LRU ou expiração por tempo (TTL) seria mais robusta para o futuro.

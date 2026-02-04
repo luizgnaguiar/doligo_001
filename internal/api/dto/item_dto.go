@@ -5,6 +5,7 @@ import (
 	"time"
 	"github.com/google/uuid"
 	"doligo_001/internal/domain/item"
+	"doligo_001/internal/api/sanitizer"
 )
 
 // CreateItemRequest defines the structure for creating a new item.
@@ -16,6 +17,11 @@ type CreateItemRequest struct {
 	SalePrice   float64 `json:"sale_price" validate:"gte=0"`
 }
 
+func (r *CreateItemRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+	r.Description = sanitizer.SanitizeString(r.Description)
+}
+
 // UpdateItemRequest defines the structure for updating an existing item.
 type UpdateItemRequest struct {
 	Name        string  `json:"name" validate:"required,min=2,max=255"`
@@ -24,6 +30,11 @@ type UpdateItemRequest struct {
 	CostPrice   float64 `json:"cost_price" validate:"gte=0"`
 	SalePrice   float64 `json:"sale_price" validate:"gte=0"`
 	IsActive    bool    `json:"is_active"`
+}
+
+func (r *UpdateItemRequest) Sanitize() {
+	r.Name = sanitizer.SanitizeString(r.Name)
+	r.Description = sanitizer.SanitizeString(r.Description)
 }
 
 // ItemResponse defines the structure for an item response.

@@ -17,6 +17,7 @@ import (
 	"doligo_001/internal/api/handlers"
 	apiMiddleware "doligo_001/internal/api/middleware"
 	"doligo_001/internal/api/validator"
+	"doligo_001/internal/api/binder"
 	"doligo_001/internal/infrastructure/config"
 	"doligo_001/internal/infrastructure/db"
 	"doligo_001/internal/infrastructure/email"
@@ -162,6 +163,7 @@ func main() {
 
 	e := echo.New()
 	e.Validator = validator.NewValidator()
+	e.Binder = &binder.CustomBinder{DefaultBinder: &echo.DefaultBinder{}}
 	e.Use(middleware.Recover())
 
 	// Security Middleware
