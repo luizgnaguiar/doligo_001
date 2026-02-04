@@ -27,7 +27,10 @@ func RunMigrations(ctx context.Context, db *sql.DB, dbType, dsn string) error {
 
 	// golang-migrate needs the DSN to connect to the database.
 	// The dbType prefix is important for `migrate` to know which driver to use.
-	databaseURL := fmt.Sprintf("%s://%s", dbType, dsn)
+	databaseURL := dsn
+	if dbType == "mysql" && dsn[0:5] != "mysql" {
+		databaseURL = fmt.Sprintf("%s://%s", dbType, dsn)
+	}
 
 	m, err := migrate.NewWithSourceInstance("iofs", sourceDriver, databaseURL)
 	if err != nil {

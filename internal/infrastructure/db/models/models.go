@@ -37,6 +37,7 @@ type User struct {
 	BaseModel
 	FirstName string `gorm:"size:100;not null"`
 	LastName  string `gorm:"size:100"`
+	Name      string `gorm:"size:255"` // Kept for backward compatibility but made optional
 	Email     string `gorm:"size:255;not null;uniqueIndex"`
 	Password  string `gorm:"size:255;not null"`
 	IsActive  bool   `gorm:"default:true"`
@@ -162,6 +163,10 @@ type StockLedger struct {
 	Bin             *Bin          `gorm:"foreignKey:BinID"`
 	RecordedByUser  User          `gorm:"foreignKey:RecordedBy"`
 	StockMovement StockMovement `gorm:"foreignKey:StockMovementID"`
+}
+
+func (StockLedger) TableName() string {
+	return "stock_ledger"
 }
 
 // BillOfMaterials model represents the definition of how to produce a finished item.

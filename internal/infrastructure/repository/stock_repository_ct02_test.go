@@ -12,8 +12,10 @@ import (
 
 	"doligo_001/internal/domain/item"
 	"doligo_001/internal/domain/stock"
+	"doligo_001/internal/domain/identity"
 	"doligo_001/internal/infrastructure/config"
 	"doligo_001/internal/infrastructure/db"
+	"doligo_001/internal/infrastructure/db/models"
 	"doligo_001/internal/infrastructure/repository"
 
 	"github.com/google/uuid"
@@ -36,10 +38,26 @@ func TestMain(m *testing.M) {
 	}
 
 	// Use a test database name
-	cfg.Database.Name = fmt.Sprintf("%s_test_%d", cfg.Database.Name, time.Now().UnixNano())
+	originalDBName := cfg.Database.Name
+	cfg.Database.Name = fmt.Sprintf("%s_test_%d", originalDBName, time.Now().UnixNano())
 
-	// Initialize test database
+	// Initialize test database: First connect to 'postgres' to create the test db
 	ctx := context.Background()
+	if cfg.Database.Type == "postgres" {
+		adminCfg := cfg.Database
+		adminCfg.Name = "postgres"
+		adminDB, _, err := db.InitDatabase(ctx, &adminCfg)
+		if err != nil {
+			log.Fatalf("Failed to connect to admin database: %v", err)
+		}
+		adminSQLDB, _ := adminDB.DB()
+		_, err = adminSQLDB.Exec(fmt.Sprintf("CREATE DATABASE %s;", cfg.Database.Name))
+		if err != nil {
+			log.Fatalf("Failed to create test database: %v", err)
+		}
+		adminSQLDB.Close()
+	}
+
 	var dsn string
 	testDB, dsn, err = db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
@@ -137,6 +155,18 @@ func TestPessimisticLockingCT02(t *testing.T) {
 	itemRepo := repository.NewGormItemRepository(testDB)
 	warehouseRepo := repository.NewGormWarehouseRepository(testDB)
 	binRepo := repository.NewGormBinRepository(testDB)
+	userRepo := repository.NewGormUserRepository(testDB)
+
+	// 0. Create Test User
+	testUser := &identity.User{
+		ID:        uuid.New(),
+		FirstName: "Test",
+		LastName:  "User",
+		Email:     fmt.Sprintf("test_pessimistic_%d@example.com", time.Now().UnixNano()),
+		Password:  "hash",
+		IsActive:  true,
+	}
+	require.NoError(t, userRepo.Create(ctx, testUser))
 
 	// 1. Create necessary entities
 	testItem := &item.Item{
@@ -144,12 +174,16 @@ func TestPessimisticLockingCT02(t *testing.T) {
 		Name: "Test Item CT02",
 		Type: item.Storable,
 	}
+	testItem.SetCreatedBy(testUser.ID)
+	testItem.SetUpdatedBy(testUser.ID)
 	require.NoError(t, itemRepo.Create(ctx, testItem))
 
 	testWarehouse := &stock.Warehouse{
 		ID:   uuid.New(),
 		Name: "Test Warehouse CT02",
 	}
+	testWarehouse.SetCreatedBy(testUser.ID)
+	testWarehouse.SetUpdatedBy(testUser.ID)
 	require.NoError(t, warehouseRepo.Create(ctx, testWarehouse))
 
 	testBin := &stock.Bin{
@@ -157,14 +191,19 @@ func TestPessimisticLockingCT02(t *testing.T) {
 		Name:        "Test Bin CT02",
 		WarehouseID: testWarehouse.ID,
 	}
+	testBin.SetCreatedBy(testUser.ID)
+	testBin.SetUpdatedBy(testUser.ID)
 	require.NoError(t, binRepo.Create(ctx, testBin))
 
 	// Cleanup at the end
 	defer func() {
+		testDB.Exec("DELETE FROM stock_ledger WHERE item_id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM stock_movements WHERE item_id = ?", testItem.ID)
 		testDB.Exec("DELETE FROM stocks WHERE item_id = ?", testItem.ID)
 		testDB.Exec("DELETE FROM bins WHERE id = ?", testBin.ID)
 		testDB.Exec("DELETE FROM warehouses WHERE id = ?", testWarehouse.ID)
 		testDB.Exec("DELETE FROM items WHERE id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM users WHERE id = ?", testUser.ID)
 	}()
 
 	initialQuantity := 100.0
@@ -258,4 +297,172 @@ func TestPessimisticLockingCT02(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, finalStock)
 	assert.Equal(t, initialQuantity-(2*debitQuantity), finalStock.Quantity, "Final stock quantity mismatch")
+}
+
+func TestStockConcurrencyIntegrityCT02(t *testing.T) {
+	ctx := context.Background()
+	stockRepo := repository.NewGormStockRepository(testDB)
+	itemRepo := repository.NewGormItemRepository(testDB)
+	warehouseRepo := repository.NewGormWarehouseRepository(testDB)
+	binRepo := repository.NewGormBinRepository(testDB)
+	userRepo := repository.NewGormUserRepository(testDB)
+
+	// 0. Create Test User
+	testUser := &identity.User{
+		ID:        uuid.New(),
+		FirstName: "Stress",
+		LastName:  "User",
+		Email:     fmt.Sprintf("test_stress_%d@example.com", time.Now().UnixNano()),
+		Password:  "hash",
+		IsActive:  true,
+	}
+	require.NoError(t, userRepo.Create(ctx, testUser))
+
+	// 1. Setup
+	testItem := &item.Item{ID: uuid.New(), Name: "Stress Test Item", Type: item.Storable}
+	testItem.SetCreatedBy(testUser.ID)
+	testItem.SetUpdatedBy(testUser.ID)
+	require.NoError(t, itemRepo.Create(ctx, testItem))
+
+	testWarehouse := &stock.Warehouse{ID: uuid.New(), Name: "Stress Warehouse"}
+	testWarehouse.SetCreatedBy(testUser.ID)
+	testWarehouse.SetUpdatedBy(testUser.ID)
+	require.NoError(t, warehouseRepo.Create(ctx, testWarehouse))
+
+	testBin := &stock.Bin{ID: uuid.New(), Name: "Stress Bin", WarehouseID: testWarehouse.ID}
+	testBin.SetCreatedBy(testUser.ID)
+	testBin.SetUpdatedBy(testUser.ID)
+	require.NoError(t, binRepo.Create(ctx, testBin))
+
+	// Cleanup
+	defer func() {
+		testDB.Exec("DELETE FROM stock_ledger WHERE item_id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM stock_movements WHERE item_id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM stocks WHERE item_id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM bins WHERE id = ?", testBin.ID)
+		testDB.Exec("DELETE FROM warehouses WHERE id = ?", testWarehouse.ID)
+		testDB.Exec("DELETE FROM items WHERE id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM users WHERE id = ?", testUser.ID)
+	}()
+
+	initialQuantity := 10.0
+	numGoroutines := 20
+	debitPerRoutine := 1.0
+
+	initialStock := &stock.Stock{
+		ItemID:      testItem.ID,
+		WarehouseID: testWarehouse.ID,
+		BinID:       &testBin.ID,
+		Quantity:    initialQuantity,
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, stockRepo.UpsertStock(ctx, initialStock))
+
+	// 2. Run Concurrent Debits
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	successCount := 0
+	errorCount := 0
+	var mu sync.Mutex
+
+	startSignal := make(chan struct{})
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			<-startSignal
+
+			err := testTxManager.Transaction(context.Background(), func(tx *gorm.DB) error {
+				txStockRepo := repository.NewGormStockRepository(tx)
+				txLedgerRepo := repository.NewGormStockLedgerRepository(tx)
+				txMovementRepo := repository.NewGormStockMovementRepository(tx)
+
+				// Get with lock
+				s, err := txStockRepo.GetStockForUpdate(context.Background(), testItem.ID, testWarehouse.ID, &testBin.ID)
+				if err != nil {
+					return err
+				}
+
+				if s.Quantity < debitPerRoutine {
+					return fmt.Errorf("insufficient stock")
+				}
+
+				// Debit
+				oldQty := s.Quantity
+				s.Quantity -= debitPerRoutine
+				if err := txStockRepo.UpsertStock(context.Background(), s); err != nil {
+					return err
+				}
+
+				// Create StockMovement (required by FK in stock_ledger)
+				movement := &stock.StockMovement{
+					ID:          uuid.New(),
+					ItemID:      testItem.ID,
+					WarehouseID: testWarehouse.ID,
+					BinID:       &testBin.ID,
+					Type:        stock.MovementTypeOut,
+					Quantity:    debitPerRoutine,
+					Reason:      "CT-02 stress test",
+					HappenedAt:  time.Now(),
+				}
+				movement.SetCreatedBy(testUser.ID)
+				if err := txMovementRepo.Create(context.Background(), movement); err != nil {
+					return err
+				}
+
+				// Record Ledger (required by CT-02)
+				ledger := &stock.StockLedger{
+					ID:              uuid.New(),
+					StockMovementID: movement.ID,
+					ItemID:          testItem.ID,
+					WarehouseID:     testWarehouse.ID,
+					BinID:           &testBin.ID,
+					MovementType:    stock.MovementTypeOut,
+					QuantityChange:  debitPerRoutine,
+					QuantityBefore:  oldQty,
+					QuantityAfter:   s.Quantity,
+					Reason:          "CT-02 stress test",
+					HappenedAt:      movement.HappenedAt,
+					RecordedAt:      time.Now(),
+					RecordedBy:      testUser.ID,
+				}
+				return txLedgerRepo.Create(context.Background(), ledger)
+			})
+
+			mu.Lock()
+			if err == nil {
+				successCount++
+			} else if err.Error() == "insufficient stock" {
+				errorCount++
+			}
+			mu.Unlock()
+		}(i)
+	}
+
+	close(startSignal)
+	wg.Wait()
+
+	// 3. Validations
+	t.Logf("Success: %d, Errors: %d", successCount, errorCount)
+
+	assert.Equal(t, 10, successCount, "Should have exactly 10 successful debits")
+	assert.Equal(t, 10, errorCount, "Should have exactly 10 insufficient stock errors")
+
+	finalStock, err := stockRepo.GetStock(ctx, testItem.ID, testWarehouse.ID, &testBin.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, finalStock.Quantity, "Final stock should be 0")
+
+	// Verify Stock Ledger entries
+	var ledgerEntries []models.StockLedger
+	testDB.Where("item_id = ? AND reason = ?", testItem.ID, "CT-02 stress test").Order("recorded_at asc").Find(&ledgerEntries)
+	assert.Equal(t, 10, len(ledgerEntries), "Should have exactly 10 ledger entries")
+
+	// Verify sequential integrity in ledger
+	lastQty := initialQuantity
+	for _, entry := range ledgerEntries {
+		assert.Equal(t, lastQty, entry.QuantityBefore, "Ledger sequence break: QuantityBefore mismatch")
+		assert.Equal(t, lastQty-debitPerRoutine, entry.QuantityAfter, "Ledger sequence break: QuantityAfter mismatch")
+		lastQty = entry.QuantityAfter
+	}
 }

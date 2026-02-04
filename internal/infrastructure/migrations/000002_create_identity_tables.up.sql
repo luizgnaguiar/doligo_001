@@ -7,21 +7,41 @@
 -- Enable pgcrypto extension for gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Create the users table
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    created_by UUID,
-    updated_by UUID,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100),
-    email VARCHAR(255) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    CONSTRAINT uq_users_email UNIQUE (email)
-);
+-- Create the users table if it doesn't exist, otherwise update it
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = 'users') THEN
+        CREATE TABLE users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            first_name VARCHAR(100) NOT NULL,
+            last_name VARCHAR(100),
+            email VARCHAR(255) NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            CONSTRAINT uq_users_email UNIQUE (email)
+        );
+    ELSE
+        -- Add missing columns if table already exists
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by UUID;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_by UUID;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+        
+        -- Migrate 'name' to 'first_name' if needed
+        UPDATE users SET first_name = name WHERE first_name IS NULL;
+        ALTER TABLE users ALTER COLUMN first_name SET NOT NULL;
+    END IF;
+END
+$$;
 
 -- Create the roles table
 CREATE TABLE IF NOT EXISTS roles (
