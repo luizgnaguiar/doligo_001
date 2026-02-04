@@ -7,6 +7,7 @@ package handlers
 import (
 	"context"
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/infrastructure/logger"
 	"net/http"
 
@@ -42,8 +43,12 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
 	}
 
-	if req.Email == "" || req.Password == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "Email and password are required")
+	// Sanitization
+	req.Email = sanitizer.SanitizeString(req.Email)
+
+	// Validation
+	if err := c.Validate(&req); err != nil {
+		return err
 	}
 
 	token, err := h.usecase.Login(ctx, req.Email, req.Password)

@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/domain/stock"
 	stock_usecase "doligo_001/internal/usecase/stock"
 	"github.com/google/uuid"
@@ -40,6 +41,9 @@ func (h *StockHandler) CreateWarehouse(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	
+	req.Name = sanitizer.SanitizeString(req.Name)
+
 	if err := c.Validate(req); err != nil {
 		return err
 	}
@@ -81,6 +85,9 @@ func (h *StockHandler) CreateBin(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	
+	req.Name = sanitizer.SanitizeString(req.Name)
+
 	if err := c.Validate(req); err != nil {
 		return err
 	}
@@ -118,6 +125,9 @@ func (h *StockHandler) CreateStockMovement(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	
+	req.Reason = sanitizer.SanitizeString(req.Reason)
+
 	if err := c.Validate(req); err != nil {
 		return err
 	}

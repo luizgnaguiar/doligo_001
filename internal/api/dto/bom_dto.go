@@ -4,7 +4,7 @@ import "github.com/google/uuid"
 
 // CreateBOMRequest represents the request body for creating a new Bill of Materials.
 type CreateBOMRequest struct {
-	ProductID  uuid.UUID            `json:"product_id" validate:"required"`
+	ProductID  string               `json:"product_id" validate:"required,uuid"`
 	Name       string               `json:"name" validate:"required"`
 	IsActive   bool                 `json:"is_active"`
 	Components []BOMComponentRequest `json:"components" validate:"required,min=1"`
@@ -12,10 +12,10 @@ type CreateBOMRequest struct {
 
 // BOMComponentRequest represents a single component within a BOM creation request.
 type BOMComponentRequest struct {
-	ComponentItemID uuid.UUID `json:"component_item_id" validate:"required"`
-	Quantity        float64   `json:"quantity" validate:"required,gt=0"`
-	UnitOfMeasure   string    `json:"unit_of_measure" validate:"required"`
-	IsActive        bool      `json:"is_active"`
+	ComponentItemID string  `json:"component_item_id" validate:"required,uuid"`
+	Quantity        float64 `json:"quantity" validate:"required,gt=0"`
+	UnitOfMeasure   string  `json:"unit_of_measure" validate:"required"`
+	IsActive        bool    `json:"is_active"`
 }
 
 // BOMResponse represents the response body for a Bill of Materials.
@@ -47,7 +47,7 @@ type BOMComponentResponse struct {
 
 // CalculateCostRequest represents the request body for calculating predictive cost.
 type CalculateCostRequest struct {
-	BOMID      uuid.UUID `json:"bom_id" validate:"required"`
+	BOMID      string `json:"bom_id" validate:"required,uuid"`
 }
 
 // CalculateCostResponse represents the response body for predictive cost calculation.
@@ -58,9 +58,9 @@ type CalculateCostResponse struct {
 
 // ProduceItemRequest represents the request body for initiating a production order.
 type ProduceItemRequest struct {
-	BOMID              uuid.UUID `json:"bom_id" validate:"required"`
-	WarehouseID        uuid.UUID `json:"warehouse_id" validate:"required"`
-	ProductionQuantity float64   `json:"production_quantity" validate:"required,gt=0"`
+	BOMID              string  `json:"bom_id" validate:"required,uuid"`
+	WarehouseID        string  `json:"warehouse_id" validate:"required,uuid"`
+	ProductionQuantity float64 `json:"production_quantity" validate:"required,gt=0"`
 }
 
 // ProduceItemResponse represents the response body for a production order.

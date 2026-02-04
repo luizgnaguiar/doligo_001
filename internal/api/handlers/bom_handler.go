@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/api/validator"
 	"doligo_001/internal/domain" // For domain.UserIDFromContext
 	"doligo_001/internal/domain/bom"
@@ -33,15 +34,31 @@ func (h *BOMHandler) CreateBOM(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	
+	// Sanitization
+	req.Name = sanitizer.SanitizeString(req.Name)
+
 	if err := h.validator.Validate(req); err != nil {
 		return err // validator already returns echo.HTTPError
 	}
 
+	productID, err := uuid.Parse(req.ProductID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Product ID")
+	}
+
 	components := make([]bom.BillOfMaterialsComponent, len(req.Components))
 	for i, compReq := range req.Components {
+		compID, err := uuid.Parse(compReq.ComponentItemID)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid Component Item ID")
+		}
+		
+		compReq.UnitOfMeasure = sanitizer.SanitizeString(compReq.UnitOfMeasure)
+
 		components[i] = bom.BillOfMaterialsComponent{
 			ID:              uuid.New(), // ID will be overridden by DB on creation
-			ComponentItemID: compReq.ComponentItemID,
+			ComponentItemID: compID,
 			Quantity:        compReq.Quantity,
 			UnitOfMeasure:   compReq.UnitOfMeasure,
 			IsActive:        compReq.IsActive,
@@ -56,7 +73,7 @@ func (h *BOMHandler) CreateBOM(c echo.Context) error {
 
 	newBOM := &bom.BillOfMaterials{
 		ID:        uuid.New(), // ID will be overridden by DB on creation
-		ProductID: req.ProductID,
+		ProductID: productID,
 		Name:      req.Name,
 		IsActive:  req.IsActive,
 		Components: components,
@@ -138,8 +155,17 @@ func (h *BOMHandler) UpdateBOM(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	
+	// Sanitization
+	req.Name = sanitizer.SanitizeString(req.Name)
+
 	if err := h.validator.Validate(req); err != nil {
 		return err
+	}
+
+	productID, err := uuid.Parse(req.ProductID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Product ID")
 	}
 
 	existingBOM, err := h.bomUsecase.GetBOMByID(c.Request().Context(), id)
@@ -151,17 +177,21 @@ func (h *BOMHandler) UpdateBOM(c echo.Context) error {
 	}
 
 	// Update fields
-	existingBOM.ProductID = req.ProductID
+	existingBOM.ProductID = productID
 	existingBOM.Name = req.Name
 	existingBOM.IsActive = req.IsActive
 
-	// Handle components update - this can be complex with GORM.
-	// For simplicity, we're assuming a full replacement or that components are managed separately
-	// or that the Usecase will handle the diff. Here we'll pass the new set and let Usecase decide.
+	// Handle components update
 	newComponents := make([]bom.BillOfMaterialsComponent, len(req.Components))
 	for i, compReq := range req.Components {
+		compID, err := uuid.Parse(compReq.ComponentItemID)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid Component Item ID")
+		}
+		compReq.UnitOfMeasure = sanitizer.SanitizeString(compReq.UnitOfMeasure)
+
 		newComponents[i] = bom.BillOfMaterialsComponent{
-			ComponentItemID: compReq.ComponentItemID,
+			ComponentItemID: compID,
 			Quantity:        compReq.Quantity,
 			UnitOfMeasure:   compReq.UnitOfMeasure,
 			IsActive:        compReq.IsActive,
@@ -209,14 +239,19 @@ func (h *BOMHandler) CalculatePredictiveCost(c echo.Context) error {
 	if err := h.validator.Validate(req); err != nil {
 		return err
 	}
+	
+	bomID, err := uuid.Parse(req.BOMID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid BOM ID")
+	}
 
-	totalCost, err := h.bomUsecase.CalculatePredictiveCost(c.Request().Context(), req.BOMID)
+	totalCost, err := h.bomUsecase.CalculatePredictiveCost(c.Request().Context(), bomID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	res := dto.CalculateCostResponse{
-		BOMID:    req.BOMID,
+		BOMID:    bomID,
 		TotalCost: totalCost,
 	}
 	return c.JSON(http.StatusOK, res)
@@ -232,6 +267,16 @@ func (h *BOMHandler) ProduceItem(c echo.Context) error {
 		return err
 	}
 
+	bomID, err := uuid.Parse(req.BOMID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid BOM ID")
+	}
+	
+	warehouseID, err := uuid.Parse(req.WarehouseID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Warehouse ID")
+	}
+
 	// Assume user ID comes from JWT middleware context
 	userID, ok := domain.UserIDFromContext(c.Request().Context())
 	if !ok {
@@ -240,8 +285,8 @@ func (h *BOMHandler) ProduceItem(c echo.Context) error {
 
 	productionRecordID, actualProductionCost, err := h.bomUsecase.ProduceItem(
 		c.Request().Context(),
-		req.BOMID,
-		req.WarehouseID,
+		bomID,
+		warehouseID,
 		userID,
 		req.ProductionQuantity,
 	)

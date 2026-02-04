@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/sanitizer"
 	"doligo_001/internal/usecase/item"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -34,6 +35,10 @@ func (h *ItemHandler) Create(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+
+	req.Name = sanitizer.SanitizeString(req.Name)
+	req.Description = sanitizer.SanitizeString(req.Description)
+
 	if err := c.Validate(req); err != nil {
 		return err
 	}
@@ -72,6 +77,10 @@ func (h *ItemHandler) Update(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+
+	req.Name = sanitizer.SanitizeString(req.Name)
+	req.Description = sanitizer.SanitizeString(req.Description)
+
 	if err := c.Validate(req); err != nil {
 		return err
 	}
