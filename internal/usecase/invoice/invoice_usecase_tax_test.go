@@ -89,7 +89,7 @@ func TestCreateInvoice_TaxCalculation(t *testing.T) {
 	mockPDFGen := new(MockPDFGen)
 	mockEmailSender := new(MockEmailSender)
 
-	usecase := uc_invoice.NewUsecase(mockInvoiceRepo, mockItemRepo, mockPDFGen, mockEmailSender, nil)
+	usecase := uc_invoice.NewUsecase(mockInvoiceRepo, mockItemRepo, mockPDFGen, mockEmailSender, nil, "storage/pdfs")
 
 	ctx := context.Background()
 	thirdPartyID := uuid.New().String()

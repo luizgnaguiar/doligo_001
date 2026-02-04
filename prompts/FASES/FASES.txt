@@ -1,0 +1,746 @@
+Fase 1: Fundação e "Hardening" (A Base)
+Nesta fase, você configura o que o prompt chama de "binário autocontido".
+1. Bootstrap de Infra: Criar estrutura de pastas (Clean Arch) e carregar configurações via Env/Viper.
+2. Conectividade: Setup do pool de conexões GORM (pgx/mysql pure Go) com os limites de pool parametrizados.
+3. Migrações: Implementar o sistema de migração embutido com go:embed.
+4. Observabilidade: Configurar Logs estruturados e Middleware de Recovery no Echo v4.
+
+É PROIBIDO:
+- Implementar funcionalidades de outras fases
+- Antecipar regras de estoque, pedidos ou faturamento
+- Criar código não solicitado explicitamente nesta fase
+
+---------------------------------------------------------------------------------------------------------------
+
+
+FASE 2 — Implementação técnica restrita ao domínio Identity e Auth
+Escopo estrito da fase:
+Garantir identidade autenticada, autorização básica e rastreabilidade técnica do usuário autenticado, sem aplicar regras de negócio de módulos ainda inexistentes.
+Requisitos da Fase 2 (Corrigidos)
+1. Domínio Identity (Obrigatório)
+Criar domínio Identity com:
+Entidade User
+Entidade Role
+Entidade Permission
+Criar interfaces de repositório no /internal/domain
+Criar models GORM apenas para o domínio Identity
+Criar migrações embutidas (go:embed) para essas tabelas
+- Nenhuma referência a estoque, pedidos ou faturamento é permitida.
+2. Autenticação JWT Stateless (Obrigatório)
+Implementar:
+Endpoint de login
+Geração de JWT contendo:
+user_id
+roles
+permissions
+Middleware Echo v4 que:
+Valida o token
+Injeta user_id e permissões no context.Context
+Sem RBAC de domínio, apenas validação técnica de claims
+3. Infraestrutura de Auditoria (Base Técnica)
+Criar apenas a infraestrutura base, consistindo em:
+Interface Auditable (ex: GetCreatedBy(), SetUpdatedBy())
+Estrutura de contexto para transportar user_id
+Não aplicar auditoria a módulos inexistentes
+Não criar regras de auditoria de estoque, pedidos ou faturamento
+- Qualquer uso funcional da auditoria deve ser tratado em fases futuras.
+
+É EXPRESSAMENTE PROIBIDO NESTA FASE
+Implementar regras de estoque, pedidos ou faturamento
+Criar políticas de negócio baseadas em permissões
+Aplicar auditoria a domínios não implementados
+Declarar CT-01 a CT-04 como atendidos
+
+---------------------------------------------------------------------------------------------------------------
+
+
+Fase 3: Cadastro e Estrutura de Itens (Os Dados)
+Escopo estrito da fase:
+Definir estruturas de dados e fluxos CRUD básicos para entidades fundamentais do sistema, sem qualquer lógica de negócio derivada ou dependente de estoque, pedidos ou faturamento.
+Requisitos da Fase 3
+1. Terceiros (ThirdParty)
+Criar entidade de domínio ThirdParty
+Diferenciar Fornecedor e Cliente apenas por tipo/flag
+Criar:
+Interfaces de repositório
+Usecases CRUD básicos
+Handlers HTTP correspondentes
+Nenhuma regra fiscal, contratual ou de relacionamento com pedidos
+2. Produtos e Serviços
+Criar entidade de domínio Item
+Diferenciar:
+Item estocável
+Serviço (hora-homem)
+Criar:
+Interfaces de repositório
+Usecases CRUD básicos
+Handlers HTTP
+Nenhuma movimentação, reserva ou validação de estoque
+3. Preificação (Estrutural)
+Definir apenas campos de dados:
+Preço de custo
+Preço de venda
+Custo médio
+❌ Não calcular
+❌ Não atualizar automaticamente
+❌ Não validar margem
+❌ Não relacionar com estoque
+Regras Obrigatórias da Fase
+Todos os métodos de usecase e repositório devem aceitar context.Context
+Aplicar o fluxo rigoroso:
+API → Usecase → Repository → DB
+Utilizar auditoria (created_by, updated_by) somente como persistência passiva, se já disponível
+
+É EXPRESSAMENTE PROIBIDO NESTA FASE
+Implementar regras de estoque, reservas ou consumo
+Calcular custo médio ou margem
+Criar lógica de faturamento ou pedidos
+Declarar critérios de aceite CT-01 a CT-04 como atendidos
+
+---------------------------------------------------------------------------------------------------------------
+
+
+Correção da Fase 4: Consistência de Estoque e Validação de Concorrência
+
+Objetivo da Execução:
+Corrigir pendências técnicas identificadas na Fase 4, garantindo consistência de domínio,
+integridade referencial e validação explícita do mecanismo de bloqueio pessimista,
+sem introduzir novas funcionalidades ou antecipar fases futuras.
+
+Escopo estrito da correção:
+
+1. Validação de Integridade Referencial no Usecase de Estoque
+   - Adicionar validações explícitas no Usecase responsável por StockMovement para garantir
+     a existência prévia de:
+       * ItemID
+       * WarehouseID
+       * BinID (quando aplicável)
+   - As validações devem utilizar exclusivamente interfaces de repositório existentes
+     (ex: Exists / GetByID), sem acesso direto ao banco de dados.
+   - Nenhuma lógica de negócio adicional deve ser introduzida além da validação de existência.
+
+2. Validação do Critério de Aceite CT-02 (Concorrência)
+   - Implementar um teste automatizado que valide o comportamento de bloqueio pessimista
+     (SELECT FOR UPDATE) em operações concorrentes de débito de estoque.
+   - O teste deve:
+     * Executar duas transações concorrentes sobre o mesmo registro de estoque.
+     * Demonstrar que a segunda transação aguarda o término da primeira.
+     * Operar em nível de repositório ou integração, sem dependência da camada HTTP.
+   - O teste deve ser determinístico e reproduzível.
+
+Restrições explícitas da correção:
+- Nenhuma criação de novas entidades de domínio.
+- Nenhuma modificação em contratos públicos de API além do necessário para validação.
+- Nenhuma implementação de lógica de produção, BOM, pedidos ou faturamento.
+- Nenhuma introdução de processamento assíncrono, eventos ou task runners.
+
+Todas as alterações devem:
+- Respeitar o fluxo API → Usecase → Repository → DB.
+- Utilizar context.Context em todos os métodos afetados.
+- Manter a auditoria apenas como persistência passiva de dados.
+- Resultar em um SESSION_LOG em conformidade estrita com o AGENT_CONTRACT.
+
+---------------------------------------------------------------------------------------------------------------
+
+
+Fase 5: Engenharia e Produção (Módulo BOM)
+
+Objetivo da Fase:
+Implementar a modelagem e a execução síncrona do processo de produção (BOM),
+permitindo a transformação determinística de insumos em produtos acabados,
+com consistência transacional e rastreabilidade de custos, sem introduzir
+processamento assíncrono ou integrações externas.
+
+Escopo estrito da fase:
+
+1. Estrutura de BOM (Bill of Materials)
+   - Definição das entidades de domínio que representam a composição de produtos.
+   - Um BOM define, de forma declarativa:
+     * Quantidade de insumos estocáveis consumidos.
+     * Quantidade de serviços (hora-homem) associados.
+   - O BOM não executa lógica de estoque por si só; é apenas uma estrutura de dados.
+
+2. Cálculo de Custo Preditivo
+   - Implementação de uma função síncrona e determinística que:
+     * Consulta os custos atuais dos insumos e serviços.
+     * Calcula o custo total estimado de produção.
+   - O cálculo não persiste dados, não altera estoque e não gera efeitos colaterais.
+   - O resultado é utilizado apenas como apoio à decisão.
+
+3. Ordem de Produção (Execução Síncrona)
+   - Implementação do fluxo de produção como um caso de uso transacional único:
+     * Trava pessimista dos estoques dos insumos (SELECT FOR UPDATE).
+     * Validação de disponibilidade de estoque no momento da transação.
+     * Consumo (subtração) dos insumos.
+     * Geração (adição) do produto acabado.
+     * Registro das movimentações no StockLedger.
+     * Cálculo e persistência do custo real da produção com base nos valores efetivos.
+   - Todo o processo deve ocorrer dentro de uma transação atômica.
+   - Em caso de erro, a transação deve ser integralmente revertida.
+
+Restrições explícitas da fase:
+- Nenhum processamento assíncrono ou uso de task runners.
+- Nenhuma geração de documentos (PDF), eventos ou integrações externas.
+- Nenhuma lógica de faturamento, pedidos de venda ou entrega.
+- Nenhuma antecipação de dashboards, relatórios ou análises agregadas.
+
+Todas as implementações devem:
+- Respeitar rigorosamente o fluxo API → Usecase → Repository → DB.
+- Utilizar context.Context em todos os métodos.
+- Utilizar auditoria apenas como persistência passiva de dados.
+- Reutilizar o mecanismo de locking e transações já estabelecido na Fase 4.
+
+---------------------------------------------------------------------------------------------------------------
+
+
+Fase 6: Saída e Inteligência (Entrega de Valor)
+O software pronto para uso operacional e análise.
+
+1. Task Runner de Relatórios
+   - Implementar tarefas assíncronas no Internal Task Runner para:
+     * Geração de PDFs de Faturas via maroto.
+     * Geração de PDFs de Explosão de BOM via maroto.
+   - Todas as tarefas de geração de PDF DEVEM:
+     * Ser executadas com context.Context.
+     * Respeitar timeout máximo de 30s.
+     * Ser canceladas imediatamente caso o contexto seja encerrado (CT-03).
+
+2. Resiliência Transacional e Graceful Shutdown
+   - Garantir que operações críticas já existentes (ex.: Produção de BOM):
+     * Sejam executadas dentro de transações explícitas.
+     * Sejam corretamente commitadas ou rollbackadas em caso de falha.
+   - Garantir que, ao receber SIGTERM:
+     * O servidor pare de aceitar novas requisições.
+     * O Internal Task Runner finalize as tarefas em execução ou respeite o timeout máximo de 15 segundos (CT-04).
+   - É PROIBIDO introduzir nova lógica de produção ou estoque nesta fase; apenas garantir resiliência do fluxo já existente.
+
+3. Dashboard de Margem (Somente Leitura)
+   - Implementar endpoint(s) de leitura que exponham:
+     * Preço de Venda.
+     * Custo efetivo de insumos.
+     * Custo de serviços.
+     * Impostos calculados.
+     * Margem real (Lucro = Preço de Venda - Custos Totais).
+   - O Dashboard:
+     * NÃO deve introduzir novas regras de cálculo de preço.
+     * Deve reutilizar dados já persistidos durante a produção e faturamento.
+     * Pode utilizar SQL puro para agregações e relatórios complexos.
+
+É PROIBIDO:
+- Implementar novas regras de negócio de estoque, produção, faturamento ou precificação.
+- Criar lógica que altere dados de produção ou financeiros.
+- Antecipar funcionalidades analíticas avançadas (BI, previsões, ML).
+
+Fase 7.1 — Estabilização Arquitetural e Contratos de Integração (Sem Wiring)
+
+Objetivo da Fase:
+Estabilizar e formalizar os contratos técnicos (interfaces, assinaturas e responsabilidades)
+dos módulos iniciados nas fases anteriores, garantindo que todos os componentes
+compilam isoladamente e respeitam rigorosamente a Clean Architecture,
+sem qualquer registro em rotas, main.go ou inicialização de infraestrutura.
+
+Esta fase existe explicitamente para impedir estados intermediários inválidos
+e loops de compilação.
+
+Escopo estrito da fase:
+
+1. Estabilização de Usecases (Obrigatório)
+   - Revisar e ajustar os usecases iniciados (ex.: BOM, Margin) para que:
+     * Exponham APENAS métodos públicos necessários.
+     * Utilizem exclusivamente context.Context como entrada.
+     * Não dependam de echo.Context, HTTP, validação ou DTOs de API.
+     * Compilem isoladamente via `go test ./internal/usecase/...`.
+
+   - É OBRIGATÓRIO que cada usecase:
+     * Tenha dependências explícitas injetadas por interface.
+     * Não possua imports não utilizados.
+     * Não contenha lógica de infraestrutura, logging HTTP ou controle de transação fora do contrato.
+
+2. Definição de Contratos Públicos (Obrigatório)
+   - Para cada módulo estabilizado, definir explicitamente:
+     * Interface pública do Usecase (ex.: BomUsecase, MarginUsecase).
+     * Assinaturas completas dos métodos (inputs/outputs/erros).
+     * Responsabilidade funcional de cada método.
+
+   - O nome do tipo exportado DEVE ser exatamente o esperado pelos handlers,
+     evitando divergência semântica entre camadas.
+
+3. Consolidação de Repositórios (Obrigatório)
+   - Garantir que todos os repositórios utilizados pelos usecases:
+     * Existam como interfaces no domínio.
+     * Possuam implementações coerentes na infraestrutura.
+     * Não assumam modelos ou tabelas inexistentes.
+
+   - Qualquer dependência não implementada DEVE ser rebaixada explicitamente
+     para "DÍVIDA TÉCNICA".
+
+4. Proibição Absoluta de Wiring (Regra Crítica)
+   - É TERMINANTEMENTE PROIBIDO nesta fase:
+     * Registrar handlers no Echo.
+     * Adicionar rotas.
+     * Instanciar usecases no main.go.
+     * Inicializar repositórios no main.go.
+     * Modificar o fluxo de startup ou shutdown da aplicação.
+
+   - Arquivos podem existir, mas DEVEM permanecer isolados e não referenciados
+     pelo entrypoint da aplicação.
+
+5. Critério de Aceite Técnico (Obrigatório)
+   - O projeto DEVE:
+     * Compilar com `CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go`.
+     * Executar `go test ./internal/usecase/...` sem falhas.
+     * Não apresentar erros de import não utilizado.
+
+6. Session Log (Obrigatório)
+   - O SESSION_LOG desta fase DEVE:
+     * Listar apenas arquivos efetivamente modificados.
+     * Descrever ajustes de contratos, não "implementações funcionais".
+     * Rebaixar qualquer funcionalidade não finalizada para DÍVIDA TÉCNICA.
+     * NÃO declarar nenhum módulo como "ativo", "exposto" ou "integrado".
+
+---------------------------------------------------------------------------------------------------------------
+
+FASE 7.2 — Wiring Controlado de Usecases no main.go
+OBJETIVO
+Reintegrar exclusivamente os usecases estabilizados na Fase 7.1 ao cmd/main.go, corrigindo erros de compilação relacionados a assinaturas, construtores e interfaces, sem alterar lógica de negócio, sem modificar handlers e sem introduzir novas rotas HTTP.
+O foco desta fase é restabelecer a compilação completa do binário com CGO_ENABLED=0, mantendo a aderência estrita à Clean Architecture.
+ESCOPO PERMITIDO
+É PERMITIDO nesta fase:
+Modificar apenas o arquivo:
+cmd/main.go
+Ajustar:
+Chamadas de construtores de usecases (New*Usecase)
+Tipos de variáveis para uso de interfaces públicas
+Ordem de inicialização, se necessário, sem alterar dependências
+Imports para refletir as assinaturas reais dos usecases
+Resolver erros de compilação relacionados a:
+too many arguments in call to New*Usecase
+undefined: New*Usecase
+incompatibilidade entre tipos concretos e interfaces
+ESCOPO PROIBIDO (REGRA CRÍTICA)
+É TERMINANTEMENTE PROIBIDO nesta fase:
+Modificar qualquer arquivo fora de cmd/main.go
+Alterar handlers (internal/api/handlers/*)
+Alterar usecases (internal/usecase/*)
+Criar ou modificar DTOs
+Registrar novas rotas
+Alterar middlewares
+Introduzir lógica de negócio
+Ajustar infraestrutura (db, repository, worker, pdf, etc.)
+Qualquer necessidade fora do main.go deve ser registrada como DÍVIDA TÉCNICA, nunca implementada.
+DIRETRIZES TÉCNICAS OBRIGATÓRIAS
+O main.go deve:
+Instanciar usecases apenas via interfaces públicas
+Não depender de implementações concretas internas
+Não conter lógica de negócio
+Os construtores dos usecases devem ser usados exatamente como definidos na Fase 7.1.
+Não adaptar assinaturas
+Não criar wrappers
+O build deve respeitar:
+CGO_ENABLED=0
+GOOS=linux
+CRITÉRIO DE ACEITE TÉCNICO (OBRIGATÓRIO)
+A fase SÓ é considerada concluída se TODOS os comandos abaixo forem verdadeiros:
+O projeto compila com sucesso:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+Nenhum arquivo fora de cmd/main.go foi modificado.
+Nenhum handler foi alterado direta ou indiretamente.
+Nenhuma nova rota foi registrada.
+FORMATO DO SESSION LOG (OBRIGATÓRIO)
+O log final DEVE seguir exatamente o formato abaixo:
+### SESSION_LOG_START | Versão: v1.0.0 | Data: YYYY-MM-DD
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - cmd/main.go
+
+- RESUMO TÉCNICO:
+  - Ajuste do wiring dos usecases de BOM e Margin no main.go.
+  - Correção das chamadas de construtores para refletir as interfaces estabilizadas na Fase 7.1.
+  - Nenhuma modificação foi realizada em handlers, usecases ou infraestrutura.
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - [listar apenas se estritamente necessário]
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+### SESSION_LOG_END
+CONDIÇÃO DE FALHA AUTOMÁTICA
+A fase deve ser considerada FALHA se ocorrer qualquer um dos seguintes:
+Build falhar
+Qualquer arquivo além de cmd/main.go for alterado
+Handler ou rota for modificado
+Código de negócio for introduzido no main.go
+O SESSION LOG divergir do formato exigido
+
+
+---------------------------------------------------------------------------------------------------------------
+
+FASE 7.2-R — Recovery / Rebaseline Controlado do Repositório
+OBJETIVO
+Estabelecer formalmente um novo baseline técnico para o projeto, reconhecendo o estado atual do repositório como ponto de partida válido, após refatorações estruturais realizadas fora do controle estrito das Fases 7.1 e 7.2.
+Esta fase NÃO introduz mudanças funcionais, NÃO altera código, e NÃO corrige bugs.
+Seu único propósito é restaurar a governança do projeto, permitindo a continuidade das fases subsequentes sem violação contratual recorrente.
+ESCOPO PERMITIDO
+É PERMITIDO nesta fase:
+Não modificar nenhum arquivo do repositório
+Auditar e declarar explicitamente:
+O estado atual dos arquivos
+As divergências históricas em relação às Fases 7.1 e 7.2
+Registrar no SESSION LOG:
+Que o estado atual passa a ser considerado baseline oficial
+Que fases futuras devem partir exatamente deste estado
+ESCOPO PROIBIDO (REGRA ABSOLUTA)
+É TERMINANTEMENTE PROIBIDO nesta fase:
+Criar, editar ou remover qualquer arquivo
+Reformatar código
+Ajustar imports
+Corrigir erros
+Refatorar nomes
+Executar comandos de build como parte da validação
+Introduzir lógica de negócio
+Ajustar infraestrutura, handlers, usecases ou domínio
+Qualquer tentativa de modificação invalida automaticamente a fase.
+DIRETRIZES DE REBASELINE (OBRIGATÓRIAS)
+O repositório, no estado em que se encontra ao iniciar esta fase, passa a ser considerado:
+O baseline oficial do projeto a partir da Fase 7.2-R
+Nenhuma inconsistência histórica anterior:
+Pode ser atribuída a fases futuras
+Pode ser usada para invalidar fases posteriores
+Todas as fases subsequentes:
+Devem assumir este estado como fonte da verdade
+Devem respeitar integralmente os contratos definidos a partir daqui
+CRITÉRIO DE ACEITE TÉCNICO (OBRIGATÓRIO)
+A fase SÓ é considerada CONCLUÍDA se TODAS as condições abaixo forem verdadeiras:
+Nenhum arquivo foi modificado durante a execução da fase
+O SESSION LOG declara explicitamente:
+A aceitação do estado atual como baseline
+Nenhuma tentativa de correção técnica foi realizada
+FORMATO DO SESSION LOG (OBRIGATÓRIO)
+O log final DEVE seguir exatamente o formato abaixo:
+### SESSION_LOG_START | Versão: v1.0.0 | Data: YYYY-MM-DD
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - Nenhum
+
+- RESUMO TÉCNICO:
+  - Reconhecimento formal do estado atual do repositório como baseline oficial do projeto.
+  - Registro de que refatorações e alterações fora do escopo das Fases 7.1 e 7.2 passam a ser consideradas parte do estado consolidado.
+  - Nenhuma modificação de código foi realizada nesta fase.
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - Débitos técnicos existentes permanecem registrados conforme logs anteriores, sem alteração ou correção nesta fase.
+
+- COMANDO DE VALIDAÇÃO:
+  - Nenhum (fase declaratória de rebaseline)
+### SESSION_LOG_END
+CONDIÇÃO DE FALHA AUTOMÁTICA
+A Fase 7.2-R deve ser considerada FALHA se:
+Qualquer arquivo for modificado
+Qualquer correção técnica for aplicada
+O SESSION LOG omitir a declaração explícita de rebaseline
+O formato do log divergir do padrão exigido
+RESULTADO ESPERADO
+Ao final da Fase 7.2-R:
+O projeto possui novamente governança clara
+O estado atual do repositório é a nova fonte da verdade
+Fases futuras podem ser executadas sem conflitos contratuais
+O looping de invalidação por contexto histórico é eliminado
+
+---------------------------------------------------------------------------------------------------------------
+
+FASE 8 — BLOQUEADORES ABSOLUTOS (GATE 0)
+
+Sem 100% de atendimento, produção é proibida.
+
+FASE 8.1 — CT-01: Portabilidade e Binário Estático
+Escopo único
+Build com CGO_ENABLED=0
+Execução em Docker scratch
+Endpoint /health
+Evidências obrigatórias
+Comando de build reproduzível
+Dockerfile scratch
+Log ou execução real comprovada
+Gate atendido
+GATE 0.1 — Portabilidade e Runtime
+
+FASE 8.2 — Domínio Invoice / Faturamento
+Escopo único
+Domínio explícito de Invoice / Faturamento
+Models de domínio
+Persistência (models, repositórios)
+Migrações
+Remoção total de suposições no Margin
+Margin passa a depender exclusivamente de dados reais
+Proibido
+PDFs
+Workers
+Cancelamento
+Shutdown
+Gate atendido
+GATE 0.2 — Integridade de Faturamento
+
+FASE 8.3 — PDFs Operacionais (Implementação Real)
+Escopo único
+Implementação real de:
+InvoicePDFTask
+BomPDFTask
+Uso de dados reais
+Uso obrigatório de context.Context
+Timeout funcional de 30s
+Proibido
+Placeholders
+Cancelamento explícito
+Shutdown
+Gate atendido
+GATE 0.3 — PDFs Operacionais
+
+FASE 8.4 — CT-03: Cancelamento
+Escopo único
+Provar que:
+Cancelamento do request HTTP
+Cancela a goroutine de PDF
+PDF não continua após cancelamento
+Teste automatizado ou simulação controlada
+Proibido
+Graceful shutdown
+SIGTERM
+Gate atendido
+GATE 0.4 — Cancelamento
+
+FASE 8.5 — CT-04: Graceful Shutdown
+Escopo único
+Tratamento de SIGTERM
+WorkerPool:
+Para de aceitar novas tarefas
+Processa buffer pendente
+Encerra em até 15s
+Evidência explícita (log, teste ou simulação)
+Gate atendido
+GATE 0.5 — Graceful Shutdown
+
+✅ CONCLUSÃO DO GATE 0
+Após 8.1 → 8.5 concluídas e evidenciadas:
+🔒 Produção PERMITIDA (com risco controlado)
+
+
+---------------------------------------------------------------------------------------------------------------
+
+FASE 9 — PRONTIDÃO OPERACIONAL (GATE 1)
+
+Produção possível, mas ainda não “enterprise-ready”.
+
+FASE 9.1 — WorkerPool Configurável
+Workers via ENV
+Buffer via ENV
+Nenhum valor hardcoded
+
+FASE 9.2 — Integração Real de PDFs
+Endpoint ou fluxo produtivo
+Context propagado:
+HTTP → usecase → worker
+
+FASE 9.3 — CT-02 no Fluxo de Produção (BOM)
+Lock pessimista validado em ProduceItem
+Não apenas estoque isolado
+
+FASE 9.4 — Observabilidade Mínima
+request_id propagado
+Logs correlacionáveis
+
+---------------------------------------------------------------------------------------------------------------
+
+FASE 10 — ROBUSTEZ E QUALIDADE (GATE 2)
+
+Não bloqueia produção, mas define maturidade de produto.
+
+FASE 10.1 — Testes Unitários
+Usecases críticos:
+Stock
+BOM
+Margin
+
+FASE 10.2 — BOM Update Robusto
+Add / Remove / Modify explícitos
+Sem dependência implícita de FullSaveAssociations
+
+FASE 10.3 — Produção com Bin Explícito
+BinID nunca implícito
+Mesmo com default configurável
+
+FASE 10.4 — Circuit Breaker de E-mail
+Retry simples
+Backoff básico
+Classificação de falha definitiva
+
+
+---------------------------------------------------------------------------------------------------------------
+11.R
+Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+
+11.C
+Estabelecer um checklist mínimo e verificável para execução segura do sistema em ambientes de produção não 
+massivos, cobrindo aspectos operacionais, de infraestrutura e execução real do binário.
+Esta fase NÃO introduz código, NÃO altera arquitetura, NÃO cria requisitos funcionais e NÃO bloqueia produção.
+Seu propósito é reduzir risco operacional e formalizar responsabilidades fora do código.
+
+11.D
+Produzir um Runbook Operacional Básico, documentando passo a passo como um operador deve agir diante de 
+incidentes comuns já conhecidos pelo desenho do sistema.
+
+
+---------------------------------------------------------------------------------------------------------------
+
+
+12.1 — Variáveis de Ambiente Documentadas
+Requisitos
+Criar documentação clara e versionada contendo:
+Nome da variável
+Descrição objetiva
+Valor esperado (tipo, formato)
+Valor default (se existir)
+Impacto se ausente
+Restrições
+Nenhuma variável nova pode ser criada
+Apenas documentação do que já é consumido pelo código
+Não alterar leitura de env vars no código
+Artefato esperado
+Documento Markdown (ex: docs/env_vars.md)
+
+12.2 — Timeout de Reverse Proxy (PDF / Requests longas)
+Requisitos
+Documentar valores mínimos recomendados de timeout para:
+Geração de PDF
+Endpoints potencialmente longos
+Exemplos válidos:
+Nginx
+Traefik
+Restrições
+Não criar arquivos de configuração reais de proxy
+Apenas documentação e recomendações
+Sem tuning de performance
+Artefato esperado
+Seção dedicada em docs/production_notes.md ou equivalente
+
+12.3 — Estratégia de Backup de Banco de Dados
+Requisitos
+Definir estratégia mínima de backup:
+Tipo (full)
+Frequência
+Retenção sugerida
+Escopo:
+Banco único
+Ambiente único
+Restrições
+Não implementar scripts automáticos
+Não integrar com cloud providers
+Não versionar dumps reais
+Artefato esperado
+Documento explicativo (ex: docs/backup_strategy.md)
+
+12.4 — Execução em Ambiente Linux Real
+Requisitos
+Validar explicitamente que:
+O binário Linux é executável
+A aplicação inicia corretamente
+Ambientes válidos:
+VM Linux
+Container Docker
+CI Linux
+Restrições
+Não corrigir testes
+Não alterar comandos de build
+Apenas comprovação operacional
+Evidência exigida
+Registro em SESSION_LOG declarando:
+Ambiente utilizado
+Resultado (sucesso/falha)
+
+12.5 — Log Rotation no Host
+Requisitos
+Definir política mínima de rotação:
+Tamanho máximo
+Retenção
+Compressão (sim/não)
+Exemplos aceitáveis:
+logrotate
+journald
+Restrições
+Não fornecer arquivos reais de configuração
+Apenas orientação operacional
+Artefato esperado
+Documento ou seção dedicada em docs/operations.md
+
+---------------------------------------------------------------------------------------------------------------
+
+Análise de Complexidade — GRUPO 13
+Tarefas Propostas
+
+13.1 — Auditoria de Dependências
+
+Análise de go.mod
+Identificação de CVEs
+Atualização de libs críticas
+Complexidade: MÉDIA | Risco de Looping: BAIXO
+
+
+13.2 — Rate Limiting
+
+Middleware Echo
+Configuração via ENV
+Testes unitários
+Complexidade: MÉDIA | Risco de Looping: MÉDIO (depende de implementação)
+
+
+13.3 — CORS Configurável
+
+Middleware Echo
+Validação de origins via ENV
+Complexidade: BAIXA | Risco de Looping: BAIXO
+
+
+13.4 — Headers de Segurança
+
+HSTS, CSP, X-Frame-Options, etc.
+Middleware Echo
+Complexidade: BAIXA | Risco de Looping: BAIXO
+
+
+13.5 — Validação de Input Reforçada
+
+Sanitização de strings
+Validação de UUID
+Prevenção de SQL Injection (GORM já protege, mas validar)
+Complexidade: ALTA | Risco de Looping: ALTO
+
+---------------------------------------------------------------------------------------------------------------
+
+Fase 14.1: Auditoria de Domínio (Persistente)
+
+Implementar uma tabela de audit_logs no banco de dados para registrar alterações em entidades críticas. 
+Ao contrário dos logs estruturados (técnicos), estes registros são para consulta de negócio (ex: "Histórico de movimentações do Item X"). 
+
+Fase 14.2: Refinamento Fiscal e Tributário
+
+Evoluir o domínio de Invoice para incluir bases de cálculo de impostos (ICMS/ISS/VAT), permitindo que o Dashboard 
+de Margem reflita o lucro líquido real e não apenas o bruto. 
+
+
+Fase 14.3: Implementação de Background Workers Reais
+
+Converter a geração de PDF (atualmente síncrona) para o Internal Task Runner assíncrono, utilizando o 
+Worker Pool para evitar que requisições de longa duração travem a API.
+
+FASE 14.4
+
+Objetivo: Consolidar a documentação do Grupo 14 e estabilizar o ambiente de testes de integração para o banco de dados.
+
+Escopo:
+
+Estabilização de Testes: Corrigir o setup de banco de dados nos testes de integração (test_main ou similar) para permitir que a Fase 15 execute queries reais com SELECT FOR UPDATE.
+
+Documentação: Criar/Atualizar os documentos de Auditoria e Variáveis de Ambiente citados acima.
+
+Cleanup: Remover mocks obsoletos que foram substituídos pela lógica assíncrona.
+
+---------------------------------------------------------------------------------------------------------------
+

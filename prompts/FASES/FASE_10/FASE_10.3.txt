@@ -1,0 +1,170 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+TAREFA ATIVA — FASE 10.3
+PRODUÇÃO COM BIN EXPLÍCITO (GATE 2)
+CONTEXTO DE EXECUÇÃO
+Esta tarefa ocorre após o encerramento formal da FASE 10.2.
+O sistema já possui:
+Domínio de Stock
+Domínio de Warehouse
+Domínio de Bin
+Usecases operacionais para movimentação de estoque
+Atualmente, existem pontos onde o Bin pode ser inferido implicitamente, o que é inaceitável para maturidade de produção.
+OBJETIVO ÚNICO DA TAREFA
+Garantir que BinID nunca seja implícito em operações de estoque.
+Mesmo quando houver:
+Bin default
+Configuração por Warehouse
+Comportamento histórico permissivo
+O Bin deve ser sempre explicitamente definido na operação.
+PRINCÍPIO FUNDAMENTAL
+Nenhuma movimentação de estoque ocorre sem Bin explicitamente informado.
+Este princípio é absoluto.
+ESCOPO AUTORIZADO
+Você pode somente:
+Ajustar usecases de Stock
+Ajustar DTOs de entrada
+Ajustar validações de domínio
+Ajustar handlers de API relacionados a Stock
+Ajustar lógica de resolução de Bin
+Sempre mantendo:
+Clean Architecture
+Regras de domínio explícitas
+Falhas determinísticas
+REGRAS OBRIGATÓRIAS
+1. BinID Obrigatório
+Toda operação de estoque deve:
+Receber bin_id explicitamente
+Validar sua existência
+Validar pertencimento ao Warehouse correto
+Falhar se ausente
+2. Proibição de Fallback Implícito
+É explicitamente proibido:
+Inferir Bin automaticamente
+Buscar Bin default silenciosamente
+Criar Bin implícito
+Usar “primeiro Bin encontrado”
+Se um Bin default existir:
+Ele pode ser sugerido
+Nunca assumido
+3. Erro Explícito
+Na ausência de bin_id:
+A operação deve falhar
+O erro deve ser explícito
+O erro deve ser determinístico
+Não deve haver comportamento alternativo
+4. Sem Mudança de Comportamento Oculta
+Não é permitido:
+Alterar semântica de estoque existente
+Corrigir dados históricos
+Migrar dados automaticamente
+Ajustar estoque legado
+Esta fase atua somente no fluxo de produção.
+RESTRIÇÕES ABSOLUTAS
+Nesta fase, NÃO é permitido:
+Criar novos domínios
+Alterar modelo de dados
+Introduzir novas dependências
+Criar regras heurísticas
+Antecipar FASE 10.4
+Refatorar código fora do escopo
+“Melhorar UX” com fallback silencioso
+Se algo parecer necessário mas fugir do escopo:
+→ registrar como DÍVIDA TÉCNICA
+→ não implementar
+CRITÉRIO DE VALIDAÇÃO
+A fase só é considerada concluída se:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+for executado com sucesso.
+SAÍDA OBRIGATÓRIA
+Ao final, gerar um SESSION_LOG contendo:
+Arquivos criados/modificados
+Resumo técnico objetivo
+Declaração explícita de:
+ausência de Bin implícito
+falha determinística sem BinID
+Dívidas técnicas (se houver)
+Comando de validação executado
+REGRA DE CONTENÇÃO DE ESCOPO
+Se houver qualquer dúvida entre:
+“usar Bin default”
+“inferir automaticamente”
+“assumir comportamento antigo”
+A resposta correta é NÃO FAZER.
+CONDIÇÃO DE ENCERRAMENTO
+Após esta tarefa:
+A FASE 10.3 estará ENCERRADA
+O projeto poderá avançar para a FASE 10.4 — Circuit Breaker de E-mail
+Nenhuma ação adicional é permitida após a entrega.

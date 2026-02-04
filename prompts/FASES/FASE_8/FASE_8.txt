@@ -1,0 +1,74 @@
+FASE 8 — BLOQUEADORES ABSOLUTOS (GATE 0)
+
+Sem 100% de atendimento, produção é proibida.
+
+FASE 8.1 — CT-01: Portabilidade e Binário Estático
+Escopo único
+Build com CGO_ENABLED=0
+Execução em Docker scratch
+Endpoint /health
+Evidências obrigatórias
+Comando de build reproduzível
+Dockerfile scratch
+Log ou execução real comprovada
+Gate atendido
+GATE 0.1 — Portabilidade e Runtime
+
+FASE 8.2 — Domínio Invoice / Faturamento
+Escopo único
+Domínio explícito de Invoice / Faturamento
+Models de domínio
+Persistência (models, repositórios)
+Migrações
+Remoção total de suposições no Margin
+Margin passa a depender exclusivamente de dados reais
+Proibido
+PDFs
+Workers
+Cancelamento
+Shutdown
+Gate atendido
+GATE 0.2 — Integridade de Faturamento
+
+FASE 8.3 — PDFs Operacionais (Implementação Real)
+Escopo único
+Implementação real de:
+InvoicePDFTask
+BomPDFTask
+Uso de dados reais
+Uso obrigatório de context.Context
+Timeout funcional de 30s
+Proibido
+Placeholders
+Cancelamento explícito
+Shutdown
+Gate atendido
+GATE 0.3 — PDFs Operacionais
+
+FASE 8.4 — CT-03: Cancelamento
+Escopo único
+Provar que:
+Cancelamento do request HTTP
+Cancela a goroutine de PDF
+PDF não continua após cancelamento
+Teste automatizado ou simulação controlada
+Proibido
+Graceful shutdown
+SIGTERM
+Gate atendido
+GATE 0.4 — Cancelamento
+
+FASE 8.5 — CT-04: Graceful Shutdown
+Escopo único
+Tratamento de SIGTERM
+WorkerPool:
+Para de aceitar novas tarefas
+Processa buffer pendente
+Encerra em até 15s
+Evidência explícita (log, teste ou simulação)
+Gate atendido
+GATE 0.5 — Graceful Shutdown
+
+✅ CONCLUSÃO DO GATE 0
+Após 8.1 → 8.5 concluídas e evidenciadas:
+🔒 Produção PERMITIDA (com risco controlado)

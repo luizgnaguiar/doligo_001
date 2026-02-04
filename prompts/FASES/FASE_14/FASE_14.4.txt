@@ -1,0 +1,159 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+TAREFA ATIVA — FASE 14.4
+ESTABILIZAÇÃO DE AMBIENTE DE TESTES E CONSOLIDAÇÃO DOCUMENTAL
+
+CONTEXTO DE EXECUÇÃO
+
+Esta tarefa conclui o Grupo 14. O sistema já possui Auditoria de Domínio, Cálculo Fiscal e PDFs Assíncronos, mas apresenta instabilidade no setup de banco de dados para testes de integração. Além disso, a documentação precisa ser atualizada para refletir as novas capacidades de auditoria e processamento em background.
+
+OBJETIVO ÚNICO DA TAREFA
+
+Estabilizar o TestMain e a infraestrutura de banco de dados para testes de integração e atualizar a documentação técnica (Audit Logs e Variáveis de Ambiente).
+
+ESCOPO AUTORIZADO
+
+Você deve executar as seguintes ações:
+
+Infraestrutura de Testes (Fix):
+
+Revisar e estabilizar o setup de banco de dados para testes de integração (ex: internal/infrastructure/db/test_helper.go ou similar).
+
+Garantir que os testes de integração consigam executar migrações reais e operar com transações GORM de forma isolada.
+
+Resolver a pendência citada no log 14.2 sobre o setup que impede a execução do CT-02.
+
+Documentação de Auditoria (Novo):
+
+Criar o arquivo docs/audit_logs.md detalhando:
+
+A estrutura da tabela audit_logs.
+
+Como rastrear ações de usuários usando o correlation_id para vincular logs de texto e logs de banco.
+
+Atualização de Variáveis de Ambiente:
+
+Atualizar o arquivo docs/env_vars.md com as novas variáveis e caminhos de armazenamento para os PDFs assíncronos gerados na fase anterior.
+
+Cleanup de Código:
+
+Remover mocks ou funções utilitárias de geração síncrona de PDF que se tornaram obsoletas após a implementação do Worker Pool na Fase 14.3.
+
+RESTRIÇÕES ABSOLUTAS
+
+PROIBIDO introduzir novas regras de negócio ou domínios.
+
+
+
+PROIBIDO alterar a lógica de Pessimistic Locking já implementada; o foco é apenas o ambiente de teste.
+
+
+PROIBIDO ignorar a regra de build estático CGO_ENABLED=0.
+
+CRITÉRIO DE VALIDAÇÃO
+
+Ambiente de testes de integração funcional: go test ./internal/infrastructure/repository/... não deve falhar por erro de conexão ou setup de DB.
+
+Documentos docs/audit_logs.md e docs/env_vars.md criados/atualizados.
+
+CGO_ENABLED=0 go build ./cmd/main.go concluído com sucesso.
+
+SAÍDA OBRIGATÓRIA (SESSION_LOG)
+
+Gerar o bloco conforme a Seção 4 do AGENT_CONTRACT.
+
+SESSION_LOG_START | Versão: [v1.2.0] | Data: [04/02/2026]
+
+ARQUIVOS CRIADOS/MODIFICADOS:
+
+N/A (Fase de planejamento da Fase 14.4) 
+
+RESUMO TÉCNICO:
+
+Planejada a estabilização do setup de testes de integração para viabilizar a validação do CT-02.
+
+Definida a estrutura do novo documento de Auditoria de Domínio.
+
+Mapeadas as remoções de código legado de geração de PDF síncrona.
+
+DÍVIDA TÉCNICA / PENDÊNCIAS:
+
+N/A 
+
+COMANDO DE VALIDAÇÃO:
+
+CGO_ENABLED=0 go build -o doligo ./cmd/main.go 
+
+SESSION_LOG_END

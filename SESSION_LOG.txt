@@ -16,7 +16,7 @@ SESSION_LOG_START | Versão: v1.0.1 | Data: 03/02/2026
   - CORREÇÃO APLICADA:
     - O arquivo `cmd/main.go` foi refatorado para adotar a inicialização não-bloqueante.
     - A inicialização dos serviços dependentes de banco de dados (`initServices`) foi movida para uma goroutine.
-    - O servidor HTTP (Echo) é iniciado imediatamente na goroutine principal, garantindo que o endpoint `/health` esteja sempre disponível, mesmo que os outros serviços falhem ao iniciar.
+    - O servidor HTTP (Echo) é iniciado imediatamente na goroutine principal, garantindo que o endpoint `/health` esteja sempre disponível, even though other services might fail to start.
     - A aplicação agora loga o erro de inicialização dos serviços, mas não encerra, permitindo que o readiness probe `/ready` falhe e impeça o roteamento de tráfego para a instância não saudável.
   
   - VALIDAÇÃO:
@@ -58,3 +58,28 @@ SESSION_LOG_START | Versão: v1.0.1 | Data: 03/02/2026
   - sleep 5 && curl http://localhost:8080/health && docker stop doligo-test
 
 SESSION_LOG_END
+
+### SESSION_LOG_START | Versão: [v1.2.1] | Data: [04/02/2026]
+- ARQUIVOS CRIADOS/MODIFICADOS: 
+  - internal/infrastructure/repository/stock_repository_ct02_test.go
+  - docs/audit_logs.md
+  - docs/env_vars.md
+  - internal/infrastructure/config/config.go
+  - internal/usecase/invoice/invoice.go
+  - internal/usecase/invoice/invoice_usecase.go
+  - internal/usecase/invoice/invoice_usecase_tax_test.go
+  - internal/usecase/invoice/pdf_task.go
+  - internal/api/handlers/invoice_handler.go
+  - internal/api/handlers/invoice_handler_test.go
+  - cmd/main.go
+- RESUMO TÉCNICO:
+  - Estabilização da infraestrutura de testes de integração: Corrigidas assinaturas de InitDatabase e RunMigrations no stock_repository_ct02_test.go.
+  - Refatoração do CT-02: Garantido o uso de conexões distintas do pool para validar Pessimistic Locking em transações simultâneas.
+  - Consolidação Documental: Criado docs/audit_logs.md detalhando a estrutura de auditoria e correlação de logs.
+  - Configuração: Introduzida a variável PDF_STORAGE_PATH (default storage/pdfs) para centralizar caminhos de armazenamento.
+  - Cleanup de PDF: Removida a geração síncrona de PDF (GenerateInvoicePDF) da Usecase, Handler e Rotas, consolidando o uso do Worker Pool assíncrono.
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - N/A
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 go build -o doligo ./cmd/main.go && go test -v ./internal/usecase/invoice/...
+### SESSION_LOG_END

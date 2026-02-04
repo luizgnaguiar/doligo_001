@@ -90,7 +90,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	bomUsecase := bom_uc.NewBOMUsecase(bomRepo)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	emailSender := email.NewSimpleEmailSender()
-	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender, pdfWorkerPool)
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender, pdfWorkerPool, cfg.PDFStoragePath)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)
@@ -148,7 +148,6 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	invoiceGroup := v1.Group("/invoices")
 	invoiceGroup.POST("", invoiceHandler.CreateInvoice)
 	invoiceGroup.GET("/:id", invoiceHandler.GetInvoice)
-	invoiceGroup.GET("/:id/pdf", invoiceHandler.GenerateInvoicePDF)
 	invoiceGroup.POST("/:id/pdf", invoiceHandler.QueueInvoicePDF)
 
 	slog.Info("All services initialized and routes registered.")

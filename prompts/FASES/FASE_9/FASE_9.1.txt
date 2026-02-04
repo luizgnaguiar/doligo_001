@@ -1,0 +1,158 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+FASE 9.1 — Observabilidade Básica e Determinística
+GATE 1.1 — Sistema Observável
+OBJETIVO ÚNICO DA FASE
+Garantir que o sistema seja operacionalmente observável, de forma:
+Determinística
+Não invasiva
+Sem dependências externas
+Sem impacto funcional
+O objetivo é permitir diagnóstico confiável de:
+Inicialização
+Execução
+Erros
+Shutdown
+Nenhum outro objetivo existe nesta fase.
+ESCOPO PERMITIDO (LISTA FECHADA)
+1. Logging Estruturado Básico (Obrigatório)
+Padronizar logging em pontos críticos:
+Startup
+Shutdown
+Erros de infraestrutura
+Erros de usecase
+Logs DEVEM conter, quando aplicável:
+Timestamp
+Nível (INFO / WARN / ERROR)
+Componente
+Mensagem objetiva
+É permitido:
+log/slog (preferencial)
+Logging síncrono
+É PROIBIDO:
+Logging verboso
+Logging de payload sensível
+Logging condicionado a ambiente inexistente
+2. Correlação por Context (Obrigatório)
+Sempre que houver context.Context, o log DEVE:
+Ser capaz de ser associado à requisição/operação
+Não é obrigatório implementar tracing distribuído
+Não é permitido criar IDs globais artificiais
+3. Health vs Readiness (Obrigatório)
+Confirmar semanticamente:
+/health = processo vivo
+/ready = dependências essenciais prontas
+Se /ready ainda não existir:
+Criar endpoint mínimo
+Sem lógica complexa
+Sem polling
+ESCOPO EXPLICITAMENTE PROIBIDO
+Durante esta fase é TERMINANTEMENTE PROIBIDO:
+Integrar Prometheus, OpenTelemetry ou similares
+Criar métricas customizadas
+Criar dashboards
+Criar alertas
+Criar tracing distribuído
+Criar retries ou circuit breakers
+Alterar lógica de negócio
+Criar dependência de variáveis de ambiente novas
+REGRAS ANTI-ALUCINAÇÃO
+Não declarar “observável” sem evidência concreta
+Não afirmar “pronto para produção”
+Não inferir uso futuro de métricas
+Se algo não puder ser observado:
+➡ REBAIXE PARA DÍVIDA TÉCNICA
+CRITÉRIO DE ACEITE TÉCNICO (FECHADO)
+A fase SÓ é considerada concluída se TODAS as condições forem verdadeiras:
+Logs estruturados existem nos pontos críticos
+Logs não introduzem acoplamento funcional
+/health e /ready têm semântica clara e distinta
+Nenhuma infraestrutura externa foi introduzida
+Nenhuma funcionalidade fora do escopo foi criada
+O projeto compila com:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+SESSION_LOG (OBRIGATÓRIO)
+Ao final da execução, você DEVE gerar:
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/AAAA
+ARQUIVOS CRIADOS/MODIFICADOS:
+RESUMO TÉCNICO:
+DÍVIDA TÉCNICA / PENDÊNCIAS:
+COMANDO DE VALIDAÇÃO:
+SESSION_LOG_END
+É PROIBIDO encerrar a resposta sem o SESSION_LOG.
+REGRA FINAL
+Se houver dúvida entre implementar ou rebaixar:
+➡ SEMPRE REBAIXE.
+Nenhuma exceção é permitida.

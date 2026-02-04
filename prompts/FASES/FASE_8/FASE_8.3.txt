@@ -1,0 +1,165 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+FASE 8.3 — PDFs Operacionais Reais (Invoice)
+GATE 0.3 — Geração de PDF Funcional
+OBJETIVO ÚNICO DA FASE
+Substituir definitivamente qualquer PDF placeholder por PDFs reais, gerados a partir de dados persistidos de Invoice, garantindo que:
+O PDF represente fielmente os dados da fatura
+O processo seja determinístico
+Não haja lógica implícita ou inferida
+Nenhum outro objetivo existe nesta fase.
+ESCOPO PERMITIDO (LISTA FECHADA)
+1. Geração de PDF de Invoice (Obrigatório)
+Gerar PDF de Invoice usando:
+Dados reais persistidos
+Layout simples (não estético)
+O PDF deve conter, no mínimo:
+Identificação da Invoice
+Dados do cliente
+Itens (InvoiceLine)
+Totais persistidos
+É permitido:
+HTML → PDF
+Template embutido via go:embed
+É proibido:
+Layout avançado
+Customização visual
+Internacionalização
+Branding
+2. Template e Assets (Obrigatório)
+Templates DEVEM ser embutidos via go:embed
+Nenhum asset externo é permitido
+Nenhuma dependência de filesystem em runtime
+3. Integração mínima com WorkerPool (Permitido, mas restrito)
+É PERMITIDO:
+Criar WorkerPool simples e síncrono
+Executar geração de PDF em background controlado
+É PROIBIDO:
+Retry
+Wait
+Loop
+Backoff
+Queue persistente
+Se não for possível garantir execução sem loop:
+➡ NÃO IMPLEMENTE WorkerPool
+➡ Gere o PDF de forma síncrona
+4. API mínima (Permitido)
+É permitido:
+Endpoint único para geração/obtenção do PDF da Invoice
+É proibido:
+CRUD adicional
+Upload
+Versionamento
+Autorização avançada
+ESCOPO EXPLICITAMENTE PROIBIDO
+Durante esta fase é TERMINANTEMENTE PROIBIDO:
+Implementar cancelamento (CT-03)
+Implementar graceful shutdown (CT-04)
+Criar múltiplos tipos de PDF
+Criar lógica fiscal
+Criar estados de pagamento
+Criar cache
+Criar retries automáticos
+Criar processamento assíncrono complexo
+REGRAS ANTI-ALUCINAÇÃO
+Nunca afirmar que o PDF é “oficial” ou “fiscal”
+Nunca afirmar compatibilidade legal
+Nunca inferir sucesso sem gerar o arquivo
+Nunca assumir que o WorkerPool é necessário
+Se algo não puder ser comprovado:
+➡ REBAIXE PARA DÍVIDA TÉCNICA
+CRITÉRIO DE ACEITE TÉCNICO (FECHADO)
+A fase SÓ é considerada concluída se TODAS as condições forem verdadeiras:
+PDF é gerado a partir de dados reais de Invoice
+Nenhum placeholder permanece
+Templates estão embutidos via go:embed
+Nenhum loop, retry ou wait foi implementado
+Nenhuma funcionalidade fora do escopo foi criada
+O projeto compila com:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+Geração bem-sucedida NÃO autoriza inferências adicionais.
+SESSION_LOG (OBRIGATÓRIO)
+Ao final da execução, você DEVE gerar:
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/AAAA
+ARQUIVOS CRIADOS/MODIFICADOS:
+RESUMO TÉCNICO:
+DÍVIDA TÉCNICA / PENDÊNCIAS:
+COMANDO DE VALIDAÇÃO:
+SESSION_LOG_END
+É PROIBIDO encerrar a resposta sem o SESSION_LOG.
+REGRA FINAL
+Se houver dúvida entre implementar ou rebaixar:
+➡ SEMPRE REBAIXE.
+Nenhuma exceção é permitida.

@@ -1,0 +1,403 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+
+
+
+## TAREFA ATIVA — FASE 13.2
+### RATE LIMITING (PROTEÇÃO CONTRA ABUSE)
+
+#### CONTEXTO DE EXECUÇÃO
+Esta tarefa ocorre após o encerramento formal da FASE 13.1 (Auditoria de Dependências).
+
+O sistema já possui:
+- Endpoints HTTP públicos via Echo v4
+- Autenticação JWT em rotas protegidas
+- Logs estruturados com correlation_id
+- **Nenhuma proteção contra abuse ou DoS**
+
+O objetivo é **implementar rate limiting configurável** para proteger a API contra requisições excessivas, seja por erro de cliente ou ataque malicioso.
+
+#### OBJETIVO ÚNICO DA TAREFA
+Implementar middleware de rate limiting no Echo v4, configurável via variáveis de ambiente, aplicável globalmente e/ou por rota, sem introduzir dependências externas pesadas.
+
+Nada além disso.
+
+#### PROBLEMA A SER RESOLVIDO
+Atualmente:
+- Qualquer cliente pode fazer requisições ilimitadas
+- Endpoint `/health` pode ser usado para DoS
+- Geração de PDF pode ser abusada (operação cara)
+- Não há controle de taxa de requisições
+
+Esta fase corrige **exclusivamente** isso.
+
+#### ESCOPO AUTORIZADO
+Você pode somente:
+1. **Implementar** middleware de rate limiting usando:
+   - **Opção A** (Recomendada): Biblioteca leve `golang.org/x/time/rate` (stdlib extended)
+   - **Opção B**: Implementação manual com `sync.Map` + `time.Ticker`
+   - **Proibido**: Redis, Memcached ou qualquer dependência externa
+
+2. **Configurar** via variáveis de ambiente:
+   ```bash
+   RATE_LIMIT_ENABLED=true
+   RATE_LIMIT_REQUESTS_PER_SECOND=10
+   RATE_LIMIT_BURST=20
+   ```
+
+3. **Aplicar** o middleware:
+   - Globalmente (todas as rotas)
+   - OU por grupo de rotas (ex: apenas `/api/v1/*`)
+
+4. **Logar** requisições bloqueadas:
+   ```go
+   logger.Warn("Rate limit exceeded", "ip", clientIP, "path", path)
+   ```
+
+5. **Retornar** resposta HTTP adequada:
+   - Status: `429 Too Many Requests`
+   - Header: `Retry-After: 60` (segundos)
+   - Body: `{"error": "rate limit exceeded"}`
+
+6. **Atualizar** documentação:
+   - Adicionar variáveis ao `docs/env_vars.md`
+   - Criar `docs/rate_limiting.md` com detalhes técnicos
+
+#### RESTRIÇÕES ABSOLUTAS
+Nesta fase, **NÃO** é permitido:
+- Usar Redis, Memcached ou storage externo
+- Implementar rate limiting distribuído (multi-instância)
+- Criar sistema de whitelist/blacklist de IPs
+- Implementar rate limiting por usuário/JWT
+- Adicionar endpoints de gestão de rate limit
+- Criar dashboard de métricas de bloqueio
+- Modificar lógica de negócio existente
+- Antecipar FASE 13.3
+
+Se necessário rate limiting distribuído:  
+→ **registrar como DÍVIDA TÉCNICA**  
+→ **implementar solução local (in-memory) apenas**
+
+#### ESTRATÉGIA DE IMPLEMENTAÇÃO RECOMENDADA
+
+##### Opção A: `golang.org/x/time/rate` (Recomendada)
+
+```go
+// internal/api/middleware/rate_limiter.go
+package middleware
+
+import (
+    "net/http"
+    "sync"
+    "golang.org/x/time/rate"
+    "github.com/labstack/echo/v4"
+)
+
+type rateLimiter struct {
+    limiters map[string]*rate.Limiter
+    mu       sync.RWMutex
+    rate     rate.Limit
+    burst    int
+}
+
+func NewRateLimiter(requestsPerSecond float64, burst int) *rateLimiter {
+    return &rateLimiter{
+        limiters: make(map[string]*rate.Limiter),
+        rate:     rate.Limit(requestsPerSecond),
+        burst:    burst,
+    }
+}
+
+func (rl *rateLimiter) getLimiter(ip string) *rate.Limiter {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    limiter, exists := rl.limiters[ip]
+    if !exists {
+        limiter = rate.NewLimiter(rl.rate, rl.burst)
+        rl.limiters[ip] = limiter
+    }
+
+    return limiter
+}
+
+func (rl *rateLimiter) Middleware() echo.MiddlewareFunc {
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            ip := c.RealIP()
+            limiter := rl.getLimiter(ip)
+
+            if !limiter.Allow() {
+                // Log bloqueio
+                logger := c.Get("logger").(*slog.Logger)
+                logger.Warn("Rate limit exceeded", 
+                    "ip", ip, 
+                    "path", c.Request().URL.Path)
+
+                c.Response().Header().Set("Retry-After", "60")
+                return c.JSON(http.StatusTooManyRequests, map[string]string{
+                    "error": "rate limit exceeded",
+                })
+            }
+
+            return next(c)
+        }
+    }
+}
+```
+
+##### Configuração no `cmd/main.go`
+
+```go
+// Carregar configuração
+rateLimitEnabled := cfg.RateLimit.Enabled // nova config
+rps := cfg.RateLimit.RequestsPerSecond   // nova config
+burst := cfg.RateLimit.Burst             // nova config
+
+// Aplicar middleware
+if rateLimitEnabled {
+    limiter := middleware.NewRateLimiter(float64(rps), burst)
+    e.Use(limiter.Middleware())
+}
+```
+
+##### Adição ao `config.go`
+
+```go
+type RateLimitConfig struct {
+    Enabled            bool    `mapstructure:"rate_limit_enabled"`
+    RequestsPerSecond  int     `mapstructure:"rate_limit_requests_per_second"`
+    Burst              int     `mapstructure:"rate_limit_burst"`
+}
+
+type Config struct {
+    // ... existing fields
+    RateLimit RateLimitConfig `mapstructure:",squash"`
+}
+
+// Defaults
+func setDefaults() {
+    viper.SetDefault("rate_limit_enabled", false)
+    viper.SetDefault("rate_limit_requests_per_second", 10)
+    viper.SetDefault("rate_limit_burst", 20)
+}
+```
+
+#### TESTES OBRIGATÓRIOS
+
+Criar `internal/api/middleware/rate_limiter_test.go`:
+
+```go
+func TestRateLimiter_Allow(t *testing.T) {
+    // Teste: requisições dentro do limite passam
+}
+
+func TestRateLimiter_Exceed(t *testing.T) {
+    // Teste: requisições acima do limite retornam 429
+}
+
+func TestRateLimiter_MultipleIPs(t *testing.T) {
+    // Teste: limiters são isolados por IP
+}
+```
+
+#### CRITÉRIO DE VALIDAÇÃO
+A fase só é considerada concluída se:
+
+1. Middleware de rate limiting implementado
+2. Configurável via ENV (`RATE_LIMIT_*`)
+3. Retorna `429 Too Many Requests` quando excedido
+4. Loga requisições bloqueadas com IP e path
+5. Testes unitários passam:
+   ```bash
+   go test ./internal/api/middleware/...
+   ```
+6. Build continua funcionando:
+   ```bash
+   CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+   ```
+7. Documentação atualizada (`env_vars.md` e novo `rate_limiting.md`)
+
+**Comando de validação**:
+```bash
+# Build
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+
+# Testes
+go test ./internal/api/middleware/... -v
+
+# Teste manual (requer app rodando)
+for i in {1..30}; do curl http://localhost:8080/health; done
+# Deve retornar 429 após atingir limite
+```
+
+#### SAÍDA OBRIGATÓRIA
+```
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/YYYY
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - internal/api/middleware/rate_limiter.go
+  - internal/api/middleware/rate_limiter_test.go
+  - internal/infrastructure/config/config.go
+  - cmd/main.go
+  - docs/env_vars.md
+  - docs/rate_limiting.md
+  - go.mod (se golang.org/x/time/rate foi adicionado)
+  - go.sum
+
+- RESUMO TÉCNICO:
+  - Middleware de rate limiting implementado usando [golang.org/x/time/rate | implementação manual]
+  - Configuração via ENV: RATE_LIMIT_ENABLED, RATE_LIMIT_REQUESTS_PER_SECOND, RATE_LIMIT_BURST
+  - Limitação por IP do cliente (in-memory, não distribuído)
+  - Resposta HTTP 429 com header Retry-After
+  - Logs estruturados de bloqueio incluídos
+  - Testes unitários criados e passando
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - Rate limiting distribuído (multi-instância) não implementado
+  - Cleanup de limiters antigos (memory leak potencial em longo prazo)
+  - Rate limiting por usuário/JWT não implementado
+  - Whitelist de IPs confiáveis não implementada
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+  - go test ./internal/api/middleware/... -v
+
+- SUGESTÃO DE COMMIT:
+  feat(fase-13.2): add rate limiting middleware with IP-based throttling
+
+SESSION_LOG_END
+```
+
+#### TRATAMENTO DE EDGE CASES
+
+##### 1. Limpeza de Memória (Memory Leak)
+Se implementado, adicionar limpeza periódica:
+```go
+// Opcional (mas recomendado)
+func (rl *rateLimiter) cleanupStale() {
+    ticker := time.NewTicker(10 * time.Minute)
+    go func() {
+        for range ticker.C {
+            rl.mu.Lock()
+            // Remover limiters inativos por >30min
+            // Implementação simplificada
+            rl.mu.Unlock()
+        }
+    }()
+}
+```
+
+Se implementar cleanup:  
+→ **registrar no RESUMO TÉCNICO**  
+Se NÃO implementar:  
+→ **registrar como DÍVIDA TÉCNICA**
+
+##### 2. Proxies Reversos (X-Forwarded-For)
+O método `c.RealIP()` do Echo já trata `X-Forwarded-For` corretamente, mas documentar:
+
+```markdown
+# docs/rate_limiting.md
+## Considerações para Proxies Reversos
+- O rate limiting usa `c.RealIP()` que respeita `X-Forwarded-For`
+- Se usar Nginx/Traefik, garantir que o header seja propagado
+- Em produção, validar que o IP do cliente real está sendo usado
+```
+
+#### REGRA DE CONTENÇÃO DE ESCOPO
+Se houver qualquer dúvida entre:
+- "implementar rate limiting distribuído com Redis"
+- "implementar solução local in-memory"
+
+A resposta correta é: **SOLUÇÃO LOCAL IN-MEMORY**.
+
+Se houver qualquer dúvida entre:
+- "implementar cleanup automático de memória"
+- "deixar como dívida técnica"
+
+A resposta correta é: **IMPLEMENTAR SE SIMPLES (<20 linhas), senão DÍVIDA TÉCNICA**.
+
+#### CONDIÇÃO DE ENCERRAMENTO
+Após esta tarefa:
+- A **FASE 13.2** estará **CONCLUÍDA**
+- O projeto poderá avançar para **FASE 13.3** — CORS Configurável
+- Sistema estará protegido contra abuse básico de API
+
+---
+
+**DECLARAÇÃO FINAL DE ESCOPO**:  
+Esta fase implementa **proteção local contra abuse**.  
+Solução é **in-memory** (não distribuída).  
+Rate limiting é **por IP** (não por usuário).  
+Configuração é **via ENV** (não via API).

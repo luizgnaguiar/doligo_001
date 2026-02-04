@@ -1,0 +1,171 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+FASE 9.3 — Rastreamento Local Determinístico
+GATE 1.3 — Execução Correlacionável
+OBJETIVO ÚNICO DA FASE
+Permitir correlacionar eventos (logs) pertencentes à mesma requisição ou mesma execução lógica, através de um identificador simples, local e determinístico.
+Este rastreamento é:
+Local ao processo
+Não distribuído
+Não persistente
+Não exportável
+ESCOPO PERMITIDO (LISTA FECHADA)
+1. Identificador de Correlação (Obrigatório)
+Introduzir um correlation_id:
+Gerado no início da requisição HTTP
+Ou reutilizado se já presente no header
+O identificador deve ser:
+String simples (UUID ou equivalente)
+Determinístico por requisição
+É permitido:
+context.Context para propagação
+uuid já existente no projeto (se aplicável)
+É PROIBIDO:
+Criar estruturas de trace/span
+Criar hierarquia de spans
+Criar múltiplos IDs por requisição
+2. Propagação via Contexto (Obrigatório)
+O correlation_id DEVE:
+Ser armazenado no context.Context
+Ser propagado automaticamente para:
+Handlers
+Usecases
+Repositórios
+Serviços auxiliares (ex: PDF)
+Não é permitido:
+Passar o ID como parâmetro explícito de função
+Usar variáveis globais
+3. Integração com Logging Estruturado (Obrigatório)
+Todo log já existente DEVE:
+Incluir o correlation_id quando disponível
+Não é permitido:
+Criar novos logs apenas para “mostrar o trace”
+Aumentar verbosidade
+O objetivo é correlação, não observação detalhada.
+4. Escopo Estritamente HTTP
+O rastreamento se aplica apenas a:
+Ciclo de vida de requisições HTTP
+Não implementar rastreamento para:
+Startup
+Shutdown
+Migrações
+Inicialização de banco
+ESCOPO EXPLICITAMENTE PROIBIDO
+Durante esta fase é TERMINANTEMENTE PROIBIDO:
+OpenTelemetry ou qualquer API compatível
+Contexto distribuído entre processos
+Headers padronizados (ex: traceparent)
+Sampling
+Buffer de spans
+Goroutines para rastreamento
+Persistência de traces
+Métricas derivadas de tracing
+REGRAS ANTI-LOOPING
+Nenhum loop dedicado para rastreamento
+Nenhuma goroutine nova
+O correlation_id só nasce e morre com a requisição
+REGRAS ANTI-ALUCINAÇÃO
+É PROIBIDO declarar que o sistema é:
+“traced”
+“observável”
+“compatível com tracing distribuído”
+“preparado para OpenTelemetry”
+Se surgir qualquer ambiguidade:
+➡ REBAIXE para DÍVIDA TÉCNICA
+CRITÉRIO DE ACEITE TÉCNICO (FECHADO)
+A fase SÓ é considerada concluída se:
+Existe exatamente um correlation_id por requisição
+O ID é propagado exclusivamente via context.Context
+Logs incluem o correlation_id quando aplicável
+Nenhuma dependência externa foi adicionada
+Nenhuma goroutine nova foi criada
+Nenhuma lógica de domínio foi alterada
+O sistema compila com:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+SESSION_LOG (OBRIGATÓRIO)
+Ao final da execução, você DEVE gerar:
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/AAAA
+ARQUIVOS CRIADOS/MODIFICADOS:
+RESUMO TÉCNICO:
+DÍVIDA TÉCNICA / PENDÊNCIAS:
+COMANDO DE VALIDAÇÃO:
+SESSION_LOG_END
+É PROIBIDO encerrar a resposta sem o SESSION_LOG.
+REGRA FINAL
+Entre:
+“Criar algo mais completo”
+“Rebaixar para dívida técnica”
+➡ SEMPRE REBAIXE.
+Nenhuma exceção é permitida.

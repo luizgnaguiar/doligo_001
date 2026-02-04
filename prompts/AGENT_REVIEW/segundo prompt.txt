@@ -1,0 +1,11 @@
+INSTRUÇÃO:
+Leia obrigatoriamente os arquivos:
+- AGENT_CONTRACT.txt
+- AGENT_REVIEW_PROMPT.txt
+
+INSUMOS:
+- PROMPT_ORIGINAL.txt
+- SESSION_LOG.txt 
+
+TAREFA:
+Executar auditoria conforme AGENT_REVIEW_PROMPT.txt

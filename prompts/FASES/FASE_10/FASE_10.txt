@@ -1,0 +1,22 @@
+FASE 10 — ROBUSTEZ E QUALIDADE (GATE 2)
+
+Não bloqueia produção, mas define maturidade de produto.
+
+FASE 10.1 — Testes Unitários
+Usecases críticos:
+Stock
+BOM
+Margin
+
+FASE 10.2 — BOM Update Robusto
+Add / Remove / Modify explícitos
+Sem dependência implícita de FullSaveAssociations
+
+FASE 10.3 — Produção com Bin Explícito
+BinID nunca implícito
+Mesmo com default configurável
+
+FASE 10.4 — Circuit Breaker de E-mail
+Retry simples
+Backoff básico
+Classificação de falha definitiva

@@ -1,0 +1,124 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+Correção da Fase 4: Consistência de Estoque e Validação de Concorrência
+
+Objetivo da Execução:
+Corrigir pendências técnicas identificadas na Fase 4, garantindo consistência de domínio,
+integridade referencial e validação explícita do mecanismo de bloqueio pessimista,
+sem introduzir novas funcionalidades ou antecipar fases futuras.
+
+Escopo estrito da correção:
+
+1. Validação de Integridade Referencial no Usecase de Estoque
+   - Adicionar validações explícitas no Usecase responsável por StockMovement para garantir
+     a existência prévia de:
+       * ItemID
+       * WarehouseID
+       * BinID (quando aplicável)
+   - As validações devem utilizar exclusivamente interfaces de repositório existentes
+     (ex: Exists / GetByID), sem acesso direto ao banco de dados.
+   - Nenhuma lógica de negócio adicional deve ser introduzida além da validação de existência.
+
+2. Validação do Critério de Aceite CT-02 (Concorrência)
+   - Implementar um teste automatizado que valide o comportamento de bloqueio pessimista
+     (SELECT FOR UPDATE) em operações concorrentes de débito de estoque.
+   - O teste deve:
+     * Executar duas transações concorrentes sobre o mesmo registro de estoque.
+     * Demonstrar que a segunda transação aguarda o término da primeira.
+     * Operar em nível de repositório ou integração, sem dependência da camada HTTP.
+   - O teste deve ser determinístico e reproduzível.
+
+Restrições explícitas da correção:
+- Nenhuma criação de novas entidades de domínio.
+- Nenhuma modificação em contratos públicos de API além do necessário para validação.
+- Nenhuma implementação de lógica de produção, BOM, pedidos ou faturamento.
+- Nenhuma introdução de processamento assíncrono, eventos ou task runners.
+
+Todas as alterações devem:
+- Respeitar o fluxo API → Usecase → Repository → DB.
+- Utilizar context.Context em todos os métodos afetados.
+- Manter a auditoria apenas como persistência passiva de dados.
+- Resultar em um SESSION_LOG em conformidade estrita com o AGENT_CONTRACT.
+
+────────────────────────────────────────────────────────────
+
+ENCERRAMENTO OBRIGATÓRIO:
+
+Ao concluir esta fase, você DEVE:
+1. Executar o fluxo de encerramento definido no AGENT_CONTRACT.txt
+2. Gerar o bloco SESSION_LOG
+3. Declarar ações de versionamento (git) ou justificar N/A
+4. Encerrar a resposta SOMENTE após o SESSION_LOG

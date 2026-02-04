@@ -1,0 +1,174 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+TAREFA ATIVA — FASE 10.4
+CIRCUIT BREAKER DE E-MAIL (GATE 2)
+CONTEXTO DE EXECUÇÃO
+Esta tarefa ocorre após o encerramento formal da FASE 10.3.
+O sistema já possui:
+Serviço de envio de e-mails
+Pontos de disparo de e-mail (ex.: eventos de negócio)
+Execução síncrona do envio
+Atualmente, falhas no envio de e-mail podem impactar diretamente o fluxo de negócio.
+OBJETIVO ÚNICO DA TAREFA
+Implementar um circuit breaker simples e determinístico para envio de e-mails, garantindo que:
+Falhas transitórias não causem colapso do sistema
+Falhas definitivas sejam classificadas
+O fluxo principal continue operando
+Nada além disso.
+REQUISITOS FUNCIONAIS
+1. Retry Simples
+Implementar retry limitado
+Número fixo de tentativas (ex.: 3)
+Sem loop infinito
+Sem retry agressivo
+2. Backoff Básico
+Implementar atraso simples entre tentativas
+Backoff linear ou exponencial simples
+Sem jitter
+Sem configuração dinâmica
+3. Classificação de Falhas
+As falhas devem ser classificadas como:
+Transitórias
+Timeout
+Erro de conexão
+Falha temporária do provedor
+Definitivas
+Endereço inválido
+Payload inválido
+Erros de validação
+Falhas definitivas:
+não devem gerar retry
+4. Circuit Breaker Determinístico
+Após N falhas consecutivas:
+Circuito entra em estado “aberto”
+Enquanto aberto:
+Nenhuma tentativa de envio é feita
+Retorno imediato de erro conhecido
+Reset simples:
+Após tempo fixo
+Sem half-open
+Sem métricas externas
+ESCOPO AUTORIZADO
+Você pode somente:
+Ajustar o serviço de envio de e-mail
+Introduzir uma camada simples de controle (breaker)
+Ajustar chamadas existentes para respeitar o breaker
+Sempre mantendo:
+Código síncrono
+Sem goroutines novas
+Sem filas
+Sem workers
+Sem dependências externas
+RESTRIÇÕES ABSOLUTAS
+Nesta fase, NÃO é permitido:
+Criar sistema assíncrono
+Introduzir message broker
+Criar worker pool
+Persistir estado do circuito
+Criar configuração dinâmica
+Usar bibliotecas de circuit breaker
+Introduzir métricas novas
+Antecipar fases futuras
+Se algo parecer necessário mas fugir do escopo:
+→ registrar como DÍVIDA TÉCNICA
+→ não implementar
+CRITÉRIO DE VALIDAÇÃO
+A fase só é considerada concluída se:
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+for executado com sucesso.
+SAÍDA OBRIGATÓRIA
+Ao final, gerar um SESSION_LOG contendo:
+Arquivos criados/modificados
+Resumo técnico objetivo
+Declaração explícita de:
+retry limitado
+backoff simples
+classificação de falhas
+circuito determinístico
+Dívidas técnicas (se houver)
+Comando de validação executado
+REGRA DE CONTENÇÃO DE ESCOPO
+Se houver qualquer dúvida entre:
+“tornar mais resiliente”
+“usar biblioteca pronta”
+“persistir estado”
+“tornar configurável”
+A resposta correta é NÃO FAZER.
+CONDIÇÃO DE ENCERRAMENTO
+Após esta tarefa:
+A FASE 10 (ROBUSTEZ E QUALIDADE) estará ENCERRADA
+O GATE 2 será considerado FECHADO
+O projeto estará pronto para avaliação de produção controlada
+Nenhuma ação adicional é permitida após a entrega.

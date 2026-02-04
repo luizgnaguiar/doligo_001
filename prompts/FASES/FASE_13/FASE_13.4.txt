@@ -1,0 +1,199 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+
+
+TAREFA ATIVA — FASE 13.4
+VALIDAÇÃO DE INPUT REFORÇADA E SANITIZAÇÃO
+
+CONTEXTO DE EXECUÇÃO
+
+Esta tarefa ocorre após o encerramento formal da FASE 13.3 (CORS e Headers de Segurança).
+
+O sistema já possui:
+
+Middlewares de segurança de transporte e rate limiting.
+
+
+Validação básica via tags do Echo/GORM.
+
+
+Déficit de sanitização de strings para campos de texto livre, aumentando o risco de XSS persistente e injeções maliciosas.
+
+O objetivo é reforçar a integridade dos dados de entrada através de sanitização ativa e validação estrita de formatos técnicos.
+
+OBJETIVO ÚNICO DA TAREFA
+
+Implementar uma camada de sanitização de strings e validação rigorosa de tipos complexos (como UUIDs) nos Handlers/DTOs, garantindo que nenhum input malicioso alcance a camada de Usecase ou Persistência.
+
+PROBLEMA A SER RESOLVIDO
+
+Atualmente:
+
+Inputs de texto podem conter tags HTML ou scripts maliciosos.
+
+A validação de UUIDs pode ser inconsistente entre diferentes domínios.
+
+O sistema depende excessivamente da proteção automática do GORM, sem uma camada de "limpeza" prévia na API.
+
+
+ESCOPO AUTORIZADO
+
+Você pode somente:
+
+Implementar um utilitário de sanitização de strings (ex: usando bluemonday ou similar pure Go) para remover tags indesejadas de campos descritivos.
+
+Reforçar a validação de UUIDs nos DTOs de entrada utilizando o pacote google/uuid para garantir conformidade com a RFC 4122.
+
+
+
+Padronizar o retorno de erro de validação (HTTP 400) para incluir detalhes específicos sobre qual campo falhou e por quê.
+
+
+Aplicar essas validações nos Handlers críticos (Auth, Item, ThirdParty, Stock).
+
+Atualizar o validador customizado do Echo (se existir) para integrar essas novas regras de sanitização.
+
+RESTRIÇÕES ABSOLUTAS
+
+Nesta fase, NÃO é permitido:
+
+Modificar esquemas de banco de dados ou migrações.
+
+
+
+
+Alterar a lógica de negócio interna dos Usecases.
+
+
+Criar novos endpoints ou rotas.
+
+
+Adicionar dependências que exijam CGO.
+
+
+
+Antecipar a FASE 14 ou módulos de auditoria avançada.
+
+TESTES OBRIGATÓRIOS
+
+Criar ou atualizar testes nos Handlers para validar:
+
+Rejeição de UUIDs malformados.
+
+Sanitização de strings contendo <script> ou tags HTML proibidas em campos de nome/descrição.
+
+Resposta correta (400 Bad Request) com DTO de erro padronizado.
+
+CRITÉRIO DE VALIDAÇÃO
+
+A fase só é considerada concluída se:
+
+Utilitário de sanitização implementado e em uso nos Handlers principais.
+
+Validação estrita de UUID aplicada em todos os DTOs que recebem IDs.
+
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go passa sem erros.
+
+
+
+Testes de validação de input aprovados.
+
+SAÍDA OBRIGATÓRIA
+
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/YYYY
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - internal/api/validator.go (ou utilitário de sanitização)
+  - internal/api/dto/...
+  - internal/api/handlers/...
+  - internal/api/handlers/..._test.go
+
+- RESUMO TÉCNICO:
+  - Implementada sanitização de strings para prevenir XSS nos campos [Listar Campos].
+  - Reforçada validação de UUIDs em todos os pontos de entrada da API.
+  - Padronizada a estrutura de resposta de erro 400 (Bad Request).
+  - Build e testes de integridade de input validados com sucesso.
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - [Listar campos que ainda não possuem sanitização, se houver]
+  - [Limitações da biblioteca de sanitização escolhida]
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+  - go test ./internal/api/handlers/... -v
+
+- SUGESTÃO DE COMMIT:
+  feat(fase-13.4): implement input sanitization and strict UUID validation
+
+SESSION_LOG_END

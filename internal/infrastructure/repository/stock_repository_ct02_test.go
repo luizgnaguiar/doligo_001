@@ -39,7 +39,9 @@ func TestMain(m *testing.M) {
 	cfg.Database.Name = fmt.Sprintf("%s_test_%d", cfg.Database.Name, time.Now().UnixNano())
 
 	// Initialize test database
-	testDB, _, err = db.InitDatabase(&cfg.Database)
+	ctx := context.Background()
+	var dsn string
+	testDB, dsn, err = db.InitDatabase(ctx, &cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to initialize test database: %v", err)
 	}
@@ -58,15 +60,12 @@ func TestMain(m *testing.M) {
 	}()
 
 	// Run migrations
-	err = db.RunMigrations(testSQLDB, cfg.Database.Type, fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
-		cfg.Database.Host, cfg.Database.User, cfg.Database.Password, cfg.Database.Name, cfg.Database.Port, cfg.Database.SSLMode,
-	))
+	err = db.RunMigrations(ctx, testSQLDB, cfg.Database.Type, dsn)
 	if err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	testTxManager = db.NewGormTransactionManager(testDB)
+	testTxManager = db.NewGormTransactioner(testDB)
 
 	// Run tests
 	code := m.Run()
@@ -75,7 +74,7 @@ func TestMain(m *testing.M) {
 	// This part might need to be adjusted based on the database type and permissions
 	// For PostgreSQL, connecting to default 'postgres' db to drop the test db
 	if cfg.Database.Type == "postgres" {
-		cleanupDB, _, err := db.InitDatabase(&config.DatabaseConfig{
+		cleanupDB, _, err := db.InitDatabase(ctx, &config.DatabaseConfig{
 			Type: cfg.Database.Type,
 			Host: cfg.Database.Host,
 			Port: cfg.Database.Port,
@@ -116,7 +115,7 @@ func setupTest(t *testing.T) (context.Context, *gorm.DB, db.Transactioner) {
 	require.NotNil(t, tx, "failed to begin transaction")
 
 	// Use this transaction for all repositories in the test
-	testTxManager := db.NewGormTransactionManager(tx)
+	testTxManager := db.NewGormTransactioner(tx)
 
 	t.Cleanup(func() {
 		// Rollback the transaction at the end of the test
@@ -129,36 +128,48 @@ func setupTest(t *testing.T) (context.Context, *gorm.DB, db.Transactioner) {
 }
 
 func TestPessimisticLockingCT02(t *testing.T) {
-	ctx, txDB, txManager := setupTest(t)
-	stockRepo := repository.NewGormStockRepository(txDB)
-	itemRepo := repository.NewGormItemRepository(txDB)
-	warehouseRepo := repository.NewGormWarehouseRepository(txDB)
-	binRepo := repository.NewGormBinRepository(txDB)
+	ctx := context.Background()
+	// Do NOT use setupTest here because we need real concurrent transactions
+	// that can see each other's committed data and block each other.
+	// We will manually cleanup.
+	
+	stockRepo := repository.NewGormStockRepository(testDB)
+	itemRepo := repository.NewGormItemRepository(testDB)
+	warehouseRepo := repository.NewGormWarehouseRepository(testDB)
+	binRepo := repository.NewGormBinRepository(testDB)
 
 	// 1. Create necessary entities
 	testItem := &item.Item{
 		ID:   uuid.New(),
-		Name: "Test Item",
-		Type: item.ItemTypeProduct,
+		Name: "Test Item CT02",
+		Type: item.Storable,
 	}
 	require.NoError(t, itemRepo.Create(ctx, testItem))
 
 	testWarehouse := &stock.Warehouse{
 		ID:   uuid.New(),
-		Name: "Test Warehouse",
+		Name: "Test Warehouse CT02",
 	}
 	require.NoError(t, warehouseRepo.Create(ctx, testWarehouse))
 
 	testBin := &stock.Bin{
 		ID:          uuid.New(),
-		Name:        "Test Bin",
+		Name:        "Test Bin CT02",
 		WarehouseID: testWarehouse.ID,
 	}
 	require.NoError(t, binRepo.Create(ctx, testBin))
 
+	// Cleanup at the end
+	defer func() {
+		testDB.Exec("DELETE FROM stocks WHERE item_id = ?", testItem.ID)
+		testDB.Exec("DELETE FROM bins WHERE id = ?", testBin.ID)
+		testDB.Exec("DELETE FROM warehouses WHERE id = ?", testWarehouse.ID)
+		testDB.Exec("DELETE FROM items WHERE id = ?", testItem.ID)
+	}()
+
 	initialQuantity := 100.0
 	debitQuantity := 10.0
-	sleepDuration := 200 * time.Millisecond // Simulate work inside first transaction
+	sleepDuration := 500 * time.Millisecond // Simulate work inside first transaction
 
 	// Create initial stock
 	initialStock := &stock.Stock{
@@ -173,10 +184,13 @@ func TestPessimisticLockingCT02(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	startSignal := make(chan struct{})
+
 	// Transaction 1 Goroutine
 	go func() {
 		defer wg.Done()
-		err := txManager.Transaction(context.Background(), func(tx *gorm.DB) error {
+		<-startSignal
+		err := testTxManager.Transaction(context.Background(), func(tx *gorm.DB) error {
 			stockRepo1 := repository.NewGormStockRepository(tx)
 			
 			// Get stock with pessimistic lock
@@ -197,15 +211,17 @@ func TestPessimisticLockingCT02(t *testing.T) {
 		assert.NoError(t, err, "Transaction 1 failed")
 	}()
 
-	// Give a small delay to ensure transaction 1 starts first
-	time.Sleep(50 * time.Millisecond) 
-
 	// Transaction 2 Goroutine
 	var secondTxStartTime time.Time
 	var secondTxEndTime time.Time
 	go func() {
 		defer wg.Done()
-		err := txManager.Transaction(context.Background(), func(tx *gorm.DB) error {
+		
+		// Ensure T1 starts first
+		time.Sleep(100 * time.Millisecond)
+		<-startSignal
+
+		err := testTxManager.Transaction(context.Background(), func(tx *gorm.DB) error {
 			stockRepo2 := repository.NewGormStockRepository(tx)
 
 			secondTxStartTime = time.Now()
@@ -226,12 +242,16 @@ func TestPessimisticLockingCT02(t *testing.T) {
 		assert.NoError(t, err, "Transaction 2 failed")
 	}()
 
+	close(startSignal)
 	wg.Wait()
 
 	// Verify the second transaction waited
 	duration := secondTxEndTime.Sub(secondTxStartTime)
 	t.Logf("Second transaction waited for %v", duration)
-	assert.GreaterOrEqual(t, duration, sleepDuration, "Second transaction did not wait for the first transaction's lock")
+	// T1 sleeps for sleepDuration. T2 starts 100ms after startSignal.
+	// So T2 should wait at least sleepDuration - 100ms.
+	expectedWait := sleepDuration - 150*time.Millisecond 
+	assert.GreaterOrEqual(t, duration, expectedWait, "Second transaction did not wait enough for the first transaction's lock")
 
 	// Verify final stock quantity
 	finalStock, err := stockRepo.GetStock(ctx, testItem.ID, testWarehouse.ID, &testBin.ID)

@@ -1,0 +1,339 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+## TAREFA ATIVA — FASE 12.4.1
+### CORREÇÃO DE CRASH EM INICIALIZAÇÃO LINUX (INVESTIGAÇÃO E RESOLUÇÃO)
+
+#### CONTEXTO DE EXECUÇÃO
+Esta tarefa ocorre após a **FALHA FORMAL** da FASE 12.4.
+
+**Evidência registrada**:
+- Binário compila corretamente com `CGO_ENABLED=0 GOOS=linux`
+- Container Docker `ubuntu:22.04` inicia e encerra imediatamente
+- Aplicação não loga nada antes de crashar
+- `/health` não é alcançável
+
+**Hipóteses de falha**:
+1. Panic silencioso durante inicialização
+2. Erro fatal sem log
+3. Dependência de arquivo inexistente
+4. Variável de ambiente obrigatória ausente causando crash
+
+O objetivo é **identificar a causa raiz** e **corrigir o crash**, garantindo que a aplicação permaneça executável mesmo sem banco de dados.
+
+#### OBJETIVO ÚNICO DA TAREFA
+Investigar e corrigir o crash de inicialização detectado na FASE 12.4, garantindo que:
+1. O binário execute sem crash imediato
+2. Logs de inicialização sejam exibidos
+3. O endpoint `/health` responda
+4. A aplicação permaneça resiliente a falhas de dependências
+
+Nada além disso.
+
+#### ESCOPO AUTORIZADO
+Você pode:
+1. **Investigar** usando técnicas de debug:
+   ```bash
+   # Executar em foreground para capturar logs
+   docker run --rm -it -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+   
+   # Executar com variáveis mínimas
+   docker run --rm -it -e PORT=8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+   ```
+2. **Modificar código** se necessário para:
+   - Adicionar logs de debug de inicialização
+   - Tratar panics silenciosos
+   - Garantir valores default seguros
+   - Melhorar mensagens de erro
+3. **Ajustar lógica de inicialização** para:
+   - Evitar crash por dependências ausentes
+   - Logar etapas de boot antes de falhas
+   - Manter servidor HTTP disponível mesmo com erros
+
+#### RESTRIÇÕES ABSOLUTAS
+Nesta fase, **NÃO** é permitido:
+- Ignorar o problema sem correção
+- Criar workarounds temporários
+- Adicionar dependências novas
+- Alterar arquitetura fundamental
+- Modificar contratos de API
+- Antecipar FASE 12.5
+
+Se a correção exigir refatoração significativa:  
+→ **avaliar se é bloqueador para produção**  
+→ **registrar como DÍVIDA TÉCNICA se não for crítico**
+
+#### INVESTIGAÇÃO OBRIGATÓRIA
+
+##### Etapa 1: Executar em Foreground
+```bash
+# Recompilar
+CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
+
+# Executar em modo interativo para ver logs
+docker run --rm -it \
+  -v $(pwd)/doligo:/app/doligo \
+  -p 8080:8080 \
+  ubuntu:22.04 /app/doligo
+```
+
+**Registrar**:
+- Última linha de log antes do crash
+- Stack trace se houver
+- Código de saída do processo
+
+##### Etapa 2: Executar com Variáveis Mínimas
+```bash
+# Definir apenas variáveis obrigatórias conhecidas
+docker run --rm -it \
+  -e PORT=8080 \
+  -e DB_HOST=localhost \
+  -e DB_PORT=5432 \
+  -e DB_NAME=doligo \
+  -e DB_USER=user \
+  -e DB_PASSWORD=pass \
+  -e JWT_SECRET=test_secret \
+  -v $(pwd)/doligo:/app/doligo \
+  -p 8080:8080 \
+  ubuntu:22.04 /app/doligo
+```
+
+**Registrar**:
+- Se o crash persiste
+- Qual variável (se alguma) resolve o crash
+
+##### Etapa 3: Análise de Código
+Revisar `cmd/main.go` procurando por:
+- `panic()` sem recover
+- `log.Fatal()` sem contexto
+- `os.Exit()` silencioso
+- Acesso a arquivos inexistentes
+- Variáveis obrigatórias sem default
+
+#### PADRÕES DE CORREÇÃO PERMITIDOS
+
+##### Padrão 1: Logging de Etapas
+```go
+func main() {
+    log.Println("BOOT: Starting application")
+    
+    log.Println("BOOT: Loading configuration")
+    cfg := config.Load()
+    
+    log.Println("BOOT: Initializing services")
+    // ...
+    
+    log.Println("BOOT: Starting HTTP server")
+    // ...
+}
+```
+
+##### Padrão 2: Valores Default Seguros
+```go
+// Antes (pode crashar)
+jwtSecret := os.Getenv("JWT_SECRET")
+if jwtSecret == "" {
+    log.Fatal("JWT_SECRET is required") // CRASH
+}
+
+// Depois (seguro para desenvolvimento)
+jwtSecret := os.Getenv("JWT_SECRET")
+if jwtSecret == "" {
+    log.Println("WARNING: JWT_SECRET not set, using default (INSECURE)")
+    jwtSecret = "dev_default_insecure"
+}
+```
+
+##### Padrão 3: Inicialização Não-Bloqueante (já implementado em 8.1.1)
+Verificar se a refatoração da FASE 8.1.1 está correta:
+```go
+func main() {
+    // Servidor HTTP deve iniciar ANTES da conexão com DB
+    go func() {
+        // Inicialização de DB em background
+    }()
+    
+    // Servidor HTTP inicia imediatamente
+    e.Start(":8080")
+}
+```
+
+#### CRITÉRIO DE VALIDAÇÃO
+A fase só é considerada concluída se:
+
+1. **Investigação documentada** no `SESSION_LOG`:
+   - Etapas executadas
+   - Causa raiz identificada
+   - Correção aplicada
+2. **Binário executável** em Linux:
+   ```bash
+   docker run --rm -d -p 8080:8080 \
+     -v $(pwd)/doligo:/app/doligo \
+     ubuntu:22.04 /app/doligo
+   
+   sleep 5
+   curl http://localhost:8080/health
+   # Deve retornar HTTP 200
+   ```
+3. **Logs de inicialização** visíveis:
+   ```bash
+   docker logs <container_id>
+   # Deve mostrar logs de boot
+   ```
+
+#### SAÍDA OBRIGATÓRIA
+Ao final, gerar um **SESSION_LOG** contendo:
+
+```
+SESSION_LOG_START | Versão: v1.0.1 | Data: DD/MM/YYYY
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - [listar arquivos Go alterados]
+
+- RESUMO TÉCNICO:
+  - INVESTIGAÇÃO:
+    - [Etapa 1: Foreground execution]
+      Resultado: [descrever o que foi observado]
+    
+    - [Etapa 2: Variáveis mínimas]
+      Resultado: [descrever o que foi observado]
+    
+    - [Etapa 3: Análise de código]
+      Resultado: [causa raiz identificada]
+  
+  - CORREÇÃO APLICADA:
+    - [Descrever modificação realizada]
+    - [Justificativa técnica]
+  
+  - VALIDAÇÃO:
+    - Binário executado com sucesso em Docker ubuntu:22.04
+    - Logs de inicialização visíveis
+    - Endpoint /health respondeu HTTP 200
+
+- CAUSA RAIZ:
+  [Descrição factual do problema]
+
+- EVIDÊNCIA DE SUCESSO:
+  Ambiente: Docker ubuntu:22.04
+  
+  Comando de build:
+  $ CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
+  
+  Comando de execução:
+  $ docker run --rm -d -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+  
+  Logs (primeiras 10 linhas):
+  [colar logs]
+  
+  Resposta do /health:
+  $ curl http://localhost:8080/health
+  HTTP/1.1 200 OK
+  {"status":"ok"}
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  [Listar se aplicável]
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
+  - docker run --rm -d -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
+  - curl http://localhost:8080/health
+
+SESSION_LOG_END
+```
+
+#### REGRA DE CONTENÇÃO DE ESCOPO
+Se houver qualquer dúvida entre:
+- "refatorar toda a inicialização"
+- "corrigir minimamente o crash"
+
+A resposta correta é: **CORRIGIR MINIMAMENTE O CRASH**.
+
+#### CONDIÇÃO DE ENCERRAMENTO
+
+##### Se SUCESSO:
+- A **FASE 12.4.1** estará **CONCLUÍDA**
+- A **FASE 12.4** será considerada **ATENDIDA**
+- O projeto poderá avançar para a **FASE 12.5**
+
+##### Se FALHA PERSISTIR:
+- Criar **FASE 12.4.2** para investigação profunda
+- Avaliar se há **BLOQUEADOR ARQUITETURAL**
+- Considerar revisão da FASE 8.1.1
+
+---
+
+**DECLARAÇÃO FINAL DE ESCOPO**:  
+Esta fase é **investigação + correção mínima**.  
+Nenhuma refatoração desnecessária será realizada.  
+O foco é **executabilidade do binário em Linux**.  
+Logs de boot devem estar visíveis para debug futuro.

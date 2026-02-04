@@ -17,20 +17,22 @@ import (
 )
 
 type usecase struct {
-	invoiceRepo Repository
-	itemRepo    item_usecase.Repository
-	pdfGen      pdf.Generator
-	emailSender email.EmailSender
-	workerPool  *worker.WorkerPool
+	invoiceRepo    Repository
+	itemRepo       item_usecase.Repository
+	pdfGen         pdf.Generator
+	emailSender    email.EmailSender
+	workerPool     *worker.WorkerPool
+	pdfStoragePath string
 }
 
-func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender, workerPool *worker.WorkerPool) Usecase {
+func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender, workerPool *worker.WorkerPool, pdfStoragePath string) Usecase {
 	return &usecase{
-		invoiceRepo: invoiceRepo,
-		itemRepo:    itemRepo,
-		pdfGen:      pdfGen,
-		emailSender: emailSender,
-		workerPool:  workerPool,
+		invoiceRepo:    invoiceRepo,
+		itemRepo:       itemRepo,
+		pdfGen:         pdfGen,
+		emailSender:    emailSender,
+		workerPool:     workerPool,
+		pdfStoragePath: pdfStoragePath,
 	}
 }
 
@@ -107,25 +109,6 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 
 func (u *usecase) GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error) {
 	return u.invoiceRepo.FindByID(ctx, id)
-}
-
-func (u *usecase) GenerateInvoicePDF(ctx context.Context, invoiceID uuid.UUID) ([]byte, string, error) {
-	// 1. Fetch the full invoice data
-	inv, err := u.invoiceRepo.FindByIDWithDetails(ctx, invoiceID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to find invoice: %w", err)
-	}
-
-	// 2. Generate the PDF
-	pdfBytes, err := u.pdfGen.Generate(ctx, inv)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate PDF: %w", err)
-	}
-
-	// 3. Create a filename
-	filename := fmt.Sprintf("invoice-%s.pdf", inv.Number)
-
-	return pdfBytes, filename, nil
 }
 
 func (u *usecase) QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error {

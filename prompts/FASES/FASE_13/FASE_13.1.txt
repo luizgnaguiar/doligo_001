@@ -1,0 +1,192 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+
+
+## TAREFA ATIVA — FASE 13.1
+### AUDITORIA DE DEPENDÊNCIAS (GO MOD)
+
+#### CONTEXTO DE EXECUÇÃO
+Esta tarefa ocorre após o encerramento formal do GRUPO 12 (Prontidão Operacional).
+
+O sistema já possui:
+- go.mod com dependências de produção
+- Bibliotecas core: Echo v4, GORM, golang-migrate, maroto
+- Nenhum processo de auditoria de segurança estabelecido
+
+O objetivo é **auditar** as dependências existentes, identificar vulnerabilidades conhecidas e atualizar bibliotecas críticas quando seguro.
+
+#### OBJETIVO ÚNICO DA TAREFA
+Executar auditoria de segurança nas dependências Go, identificar CVEs (Common Vulnerabilities and Exposures) e atualizar bibliotecas com patches de segurança disponíveis, sem quebrar compatibilidade.
+
+Nada além disso.
+
+#### PROBLEMA A SER RESOLVIDO
+Atualmente:
+- Não há auditoria de segurança das dependências
+- Versões podem conter CVEs conhecidos
+- Não há processo documentado de atualização
+- Risco de exploits em produção
+
+Esta fase corrige **exclusivamente** isso.
+
+#### ESCOPO AUTORIZADO
+Você pode somente:
+1. **Executar** auditoria com `go list -m all` e `govulncheck`:
+```bash
+   go install golang.org/x/vuln/cmd/govulncheck@latest
+   govulncheck ./...
+```
+2. **Identificar** dependências com CVEs ativos
+3. **Atualizar** SOMENTE dependências com patches de segurança:
+```bash
+   go get -u github.com/lib/pq@latest  # exemplo
+   go mod tidy
+```
+4. **Validar** que a aplicação compila após atualizações:
+```bash
+   CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+```
+5. **Documentar** o processo em `docs/dependency_audit.md`
+
+#### RESTRIÇÕES ABSOLUTAS
+Nesta fase, **NÃO** é permitido:
+- Atualizar dependências SEM CVE identificado
+- Fazer upgrade de major version (breaking changes)
+- Adicionar novas dependências
+- Remover dependências existentes
+- Modificar lógica de negócio
+- Refatorar código para compatibilidade
+- Executar testes de regressão completos (apenas build)
+- Antecipar FASE 13.2
+
+Se atualização causar quebra de compatibilidade:  
+→ **reverter a atualização**  
+→ **registrar como DÍVIDA TÉCNICA**  
+→ **não corrigir nesta fase**
+
+#### CRITÉRIO DE VALIDAÇÃO
+A fase só é considerada concluída se:
+
+1. `govulncheck ./...` foi executado
+2. Relatório de CVEs foi gerado
+3. Dependências críticas foram atualizadas (se patch disponível)
+4. `CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go` passa
+5. Documento `docs/dependency_audit.md` foi criado
+
+**Comando de validação**:
+```bash
+# Validar build
+CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+
+# Validar auditoria
+govulncheck ./...
+```
+
+#### SAÍDA OBRIGATÓRIA
+```
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/YYYY
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - go.mod (se atualizado)
+  - go.sum (se atualizado)
+  - docs/dependency_audit.md
+
+- RESUMO TÉCNICO:
+  - Auditoria executada com govulncheck
+  - [N] CVEs identificados
+  - [N] dependências atualizadas com patches de segurança
+  - [N] CVEs sem patch disponível (registrados como dívida)
+  - Build validado com sucesso
+
+- RELATÓRIO DE CVEs:
+  [Listar CVEs encontrados, dependência afetada, severidade, ação tomada]
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  [Listar CVEs sem patch ou que exigem breaking change]
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+  - govulncheck ./...
+
+SESSION_LOG_END
+```
+
+#### CONDIÇÃO DE ENCERRAMENTO
+- A **FASE 13.1** estará **CONCLUÍDA**
+- O projeto poderá avançar para **FASE 13.2** — Rate Limiting
+
+**DECLARAÇÃO FINAL DE ESCOPO**:  
+Esta fase é **auditoria + atualização conservadora**.  
+Nenhuma dependência nova será adicionada.  
+Nenhuma atualização de major version será feita.

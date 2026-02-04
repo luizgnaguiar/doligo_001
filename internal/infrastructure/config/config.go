@@ -17,6 +17,7 @@ type Config struct {
 	JWT            AuthConfig     `mapstructure:",squash"`
 	RateLimit      RateLimitConfig `mapstructure:",squash"`
 	Security       SecurityConfig  `mapstructure:",squash"`
+	PDFStoragePath string          `mapstructure:"PDF_STORAGE_PATH"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -87,6 +88,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("CORS_ALLOWED_ORIGINS", []string{"*"})
 	viper.SetDefault("CORS_ALLOW_CREDENTIALS", true)
 	viper.SetDefault("SECURITY_HEADERS_ENABLED", true)
+	viper.SetDefault("PDF_STORAGE_PATH", "storage/pdfs")
 
 
 	viper.AutomaticEnv() // Read from environment variables

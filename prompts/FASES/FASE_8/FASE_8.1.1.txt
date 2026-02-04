@@ -1,0 +1,238 @@
+MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+
+Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) – Arquitetura de Produção
+
+Papel:
+Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+
+Objetivo Geral:
+Projetar, validar e evoluir a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna descritas abaixo.
+
+────────────────────────────────────────────────────────────
+1. RESTRIÇÕES DE COMPILAÇÃO E AMBIENTE
+────────────────────────────────────────────────────────────
+
+• Binário Estático:
+  É TERMINANTEMENTE PROIBIDO o uso de CGO.
+  Toda a solução DEVE compilar com CGO_ENABLED=0.
+
+• Drivers Pure Go:
+  PostgreSQL: pgx
+  MySQL: go-sql-driver/mysql
+
+• Encapsulamento de Assets:
+  Todos os arquivos externos (SQL migrations, templates de e-mail/PDF, arquivos i18n JSON)
+  DEVEM ser lidos exclusivamente via go:embed.
+
+• Versão do Go:
+  Go 1.22 ou superior.
+
+────────────────────────────────────────────────────────────
+2. ARQUITETURA E FLUXO DE DADOS
+────────────────────────────────────────────────────────────
+
+• Estrutura de Pastas Obrigatória:
+  /cmd
+  /internal/domain
+  /internal/usecase
+  /internal/infrastructure
+  /internal/api
+
+• Mapeamento Rigoroso:
+  API → Usecase → Repository → DB
+
+• Injeção de Dependência:
+  Via construtores manuais no main.go ou wire.
+  Interfaces são obrigatórias.
+
+────────────────────────────────────────────────────────────
+3. CONCORRÊNCIA E RESILIÊNCIA
+────────────────────────────────────────────────────────────
+
+• Todos os métodos DEVEM aceitar context.Context.
+• Pessimistic Lock obrigatório para estoque.
+• Worker Pool interno baseado em channels.
+• Graceful Shutdown em até 15 segundos.
+• IO pesado com timeout de 30s.
+• Retry simples apenas para e-mail.
+
+────────────────────────────────────────────────────────────
+4. PERSISTÊNCIA E INTEGRAÇÕES
+────────────────────────────────────────────────────────────
+
+• GORM v2 para CRUD.
+• SQL puro permitido para relatórios.
+• Pool de conexões via env vars.
+• Migrações embutidas no binário.
+• PDFs com maroto (pure Go).
+
+────────────────────────────────────────────────────────────
+5. SEGURANÇA E OBSERVABILIDADE
+────────────────────────────────────────────────────────────
+
+• JWT Stateless com RBAC.
+• Logs estruturados (ZeroLog ou Zap).
+• request_id obrigatório.
+• /health = liveness
+• /ready  = readiness (DB)
+
+────────────────────────────────────────────────────────────
+6. CRITÉRIOS DE ACEITE
+────────────────────────────────────────────────────────────
+
+CT-01: Portabilidade
+CT-02: Concorrência
+CT-03: Cancelamento
+CT-04: Shutdown
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+FASE 8.1.1 — ISOLAMENTO DE BOOT E HEALTHCHECK (PRÉ-GATE 0.1)
+
+────────────────────────────────────────────────────────────
+OBJETIVO DA FASE
+────────────────────────────────────────────────────────────
+
+Permitir que o processo da aplicação inicie com sucesso e exponha o endpoint
+/health (liveness) independentemente do estado de dependências externas,
+especialmente banco de dados.
+
+Esta fase existe EXCLUSIVAMENTE para desbloquear a reavaliação do CT-01.
+Nenhuma outra finalidade é permitida.
+
+────────────────────────────────────────────────────────────
+ESCOPO ESTRITO DA FASE
+────────────────────────────────────────────────────────────
+
+É OBRIGATÓRIO comprovar:
+
+1. BOOT NÃO BLOQUEANTE
+• A inicialização do servidor HTTP NÃO DEVE falhar se:
+  - banco de dados estiver indisponível
+  - migrações falharem
+• Falhas DEVEM ser registradas em log
+• O processo principal NÃO DEVE abortar
+
+2. HEALTHCHECK ISOLADO
+• O endpoint /health DEVE:
+  - subir imediatamente após o boot
+  - responder HTTP 200
+  - NÃO depender de DB ou serviços externos
+
+3. SEPARAÇÃO DE RESPONSABILIDADES
+• /health = liveness
+• /ready (se existir) pode depender de DB
+• Nenhuma mudança semântica adicional é permitida
+
+────────────────────────────────────────────────────────────
+RESTRIÇÕES ABSOLUTAS
+────────────────────────────────────────────────────────────
+
+É TERMINANTEMENTE PROIBIDO:
+
+• Alterar regras de negócio
+• Alterar entidades de domínio
+• Alterar contratos de usecase ou repository
+• Introduzir novos endpoints
+• Alterar semântica de endpoints existentes
+• Implementar retries, waits, sleeps ou loops de inicialização
+• Tornar o /health dependente de DB
+• Simular sucesso de dependências externas
+
+Qualquer necessidade fora do escopo DEVE ser registrada como DÍVIDA TÉCNICA.
+
+────────────────────────────────────────────────────────────
+AJUSTES PERMITIDOS
+────────────────────────────────────────────────────────────
+
+São PERMITIDOS apenas:
+
+• Reordenar a sequência de inicialização no main.go
+• Isolar inicialização de DB/migrações para:
+  - goroutine separada
+  - ou etapa posterior ao start do servidor
+• Logar falhas e continuar o processo
+
+Nenhum outro ajuste é autorizado.
+
+────────────────────────────────────────────────────────────
+EVIDÊNCIAS OBRIGATÓRIAS
+────────────────────────────────────────────────────────────
+
+A fase SÓ é considerada concluída se TODAS as evidências constarem no SESSION_LOG:
+
+1. Descrição objetiva do ajuste realizado
+2. Execução comprovada do processo
+3. Evidência de /health respondendo com DB indisponível
+4. Declaração explícita de ausência de retry, wait ou loop
+
+────────────────────────────────────────────────────────────
+CRITÉRIO DE ACEITE
+────────────────────────────────────────────────────────────
+
+A fase é ATENDIDA somente se:
+
+• O processo inicia sem crash
+• /health responde imediatamente
+• Falhas de DB não abortam o boot
+• Nenhuma regra de negócio foi alterada
+• Evidências completas no SESSION_LOG
+
+Caso qualquer item falhe:
+• FASE 8.1.1 = NÃO ATENDIDA
+• Execução encerrada imediatamente
+
+────────────────────────────────────────────────────────────
+REGRA DE ENCERRAMENTO (ANTI-LOOP)
+────────────────────────────────────────────────────────────
+
+Esta fase é FAIL-FAST.
+
+Ao PRIMEIRO sinal de:
+• crash
+• /health indisponível
+• necessidade fora do escopo
+• tentativa de retry, wait ou loop
+
+O agente DEVE:
+• Declarar a fase como NÃO ATENDIDA
+• Registrar o motivo no SESSION_LOG
+• ENCERRAR a execução
+
+É TERMINANTEMENTE PROIBIDO:
+• Tentar outra abordagem
+• Variar execução
+• Expandir escopo
+• Repetir tentativas
+
+────────────────────────────────────────────────────────────
+SESSION_LOG (OBRIGATÓRIO)
+────────────────────────────────────────────────────────────
+
+O SESSION_LOG DEVE:
+
+• Listar apenas arquivos modificados
+• Registrar apenas fatos verificáveis
+• Não usar linguagem subjetiva
+• Declarar explicitamente:
+  FASE 8.1.1 — ATENDIDA ou NÃO ATENDIDA

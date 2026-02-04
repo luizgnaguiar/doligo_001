@@ -1,0 +1,172 @@
+ MODO DE EXECUÇÃO OBRIGATÓRIO
+
+ANTES DE QUALQUER ANÁLISE OU GERAÇÃO DE SAÍDA:
+
+Você DEVE:
+1. Ler integralmente o arquivo AGENT_CONTRACT.txt
+2. Operar estritamente sob as regras definidas nele
+3. Recusar qualquer ação que viole o contrato
+
+HIERARQUIA DE PRECEDÊNCIA (OBRIGATÓRIA):
+1. AGENT_CONTRACT.txt (autoridade máxima)
+2. Especificação abaixo (tarefa)
+
+Se houver qualquer conflito, ambiguidade ou lacuna,
+o AGENT_CONTRACT.txt prevalece sem exceções.
+
+────────────────────────────────────────────────────────────
+ESPECIFICAÇÃO DA TAREFA
+────────────────────────────────────────────────────────────
+ 
+ Título: Especificação de Engenharia: Sistema de ERP/CRM (Dolibarr-Go) - Arquitetura de Produção
+  Papel: Atue como Arquiteto de Software Sênior e Especialista em Go (Golang).
+  Objetivo: Projetar a estrutura técnica e os contratos de interface de um ERP/CRM robusto, seguindo
+  rigorosamente os padrões de Clean Architecture e as restrições de infraestrutura moderna.
+  1. Restrições de Compilação e Ambiente
+  • Binário Estático: Proibido o uso de CGO. Toda a solução deve compilar com CGO_ENABLED=0.
+  • Drivers Pure Go: Utilize pgx (PostgreSQL) e go-sql-driver/mysql (MySQL).
+  • Encapsulamento de Assets: Todos os arquivos externos (SQL Migrations, templates de E-mail/PDF e arquivos
+  i18n JSON) devem ser lidos via go:embed.
+  • Versão do Go: 1.22 ou superior (utilizando melhorias de iteradores e performance de loops).
+  2. Arquitetura e Fluxo de Dados
+  • Estrutura de Pastas: * /cmd: Entrypoints da aplicação.
+  • /internal/domain: Entidades puras e interfaces de repositórios/serviços.
+  • /internal/usecase: Orquestração da lógica de negócio.
+  • /internal/infrastructure: Implementações de banco, drivers e serviços externos.
+  • /internal/api: Handlers, Middlewares e DTOs (Echo v4).
+  • Mapeamento Rigoroso:
+  1. API -> Usecase: O Handler recebe um RequestDTO, valida-o e converte-o em uma Entity de Domínio.
+  2. Usecase -> Repository: O Usecase opera apenas com Entities.
+  3. Repository -> DB: O Repository converte a Entity em um Model GORM para persistência.
+  • Injeção de Dependência: Implementação via construtores manuais no main.go ou wire, priorizando a
+  testabilidade por interfaces.
+  3. Concorrência e Resiliência
+  • Gestão de Contexto: Todo método de Usecase e Repository deve aceitar context.Context.
+  • Pessimistic Locking: Operações críticas de estoque (Stock/Product) devem utilizar
+  db.Clauses(clause.Locking{Strength: "UPDATE"}) para evitar condições de corrida em ambiente distribuído.
+  • Internal Task Runner: Implementar um Worker Pool baseado em channels.
+  • Deve suportar Graceful Shutdown: ao receber SIGTERM, o sistema deve parar de aceitar novas tarefas e
+  processar o buffer existente até um limite de 15 segundos.
+  • Tarefas de IO (PDF/Email) devem ter timeout de 30s via context.
+  • Circuit Breaker: Implementar política de retries simples para envio de e-mails falhos.
+  4. Persistência e Integrações
+  • ORM: GORM v2 para CRUDs, mas com suporte a SQL puro para relatórios complexos.
+  • Pool de Conexões: Parametrizar MaxOpenConns, MaxIdleConns e ConnMaxLifetime via variáveis de ambiente.
+  • Migrações: Utilizar golang-migrate/migrate embutido no binário.
+  • Documentos: Geração de PDF utilizando a biblioteca maroto (pure Go).
+  5. Segurança e Observabilidade
+  • Auth: JWT Stateless. Middleware de RBAC validando permissões por Claims.
+  • Logs: Implementar estruturação de logs via ZeroLog ou Zap com injeção de request_id no contexto.
+  • Health Checks: Endpoints /health (liveness) e /ready (readiness - checando DB).
+  6. Casos de Teste Obrigatórios (Critérios de Aceite)
+  1. CT-01 (Portabilidade): O binário compilado deve rodar em uma imagem Docker scratch sem dependências de
+  SO.
+  2. CT-02 (Concorrência): Validar que duas transações simultâneas de débito de estoque resultam em bloqueio
+  sequencial (Pessimistic Lock).
+  3. CT-03 (Cancelamento): Validar que o fechamento da conexão pelo cliente interrompe a goroutine de
+  geração de PDF.
+  4. CT-04 (Shutdown): Validar que tarefas no Internal Task Runner terminam de processar após um sinal de
+  interrupção, sem perda de dados imediata.
+
+────────────────────────────────────────────────────────────
+INÍCIO DA EXECUÇÃO
+────────────────────────────────────────────────────────────
+
+
+
+TAREFA ATIVA — FASE 13.6
+CONSOLIDAÇÃO DE SEGURANÇA E SANEAMENTO DE DÍVIDAS TÉCNICAS (CLEANUP GRUPO 13)
+
+CONTEXTO DE EXECUÇÃO
+
+Esta tarefa finaliza o GRUPO 13 (Segurança Avançada). O sistema possui proteções implementadas, mas com redundância de código (sanitização manual) e pendências de manutenção de recursos in-memory (Rate Limit). Esta fase transforma as proteções pontuais em proteções sistêmicas e atualiza a documentação técnica obrigatória.
+
+OBJETIVO ÚNICO DA TAREFA
+
+Automatizar a sanitização de inputs, implementar o cleanup de memória do Rate Limiter e garantir que 100% da documentação de segurança esteja sincronizada com a implementação real.
+
+ESCOPO AUTORIZADO
+
+Você deve executar exclusivamente estas 4 ações de saneamento:
+
+Cleanup de Memória (Rate Limit):
+
+No arquivo internal/api/middleware/rate_limiter.go, implementar uma goroutine de limpeza (cleanupStale) que remova periodicamente (ex: a cada 10-30 min) limitadores de IPs inativos para evitar vazamento de memória (memory leak).
+
+Automação de Sanitização (Refatoração):
+
+Avaliar a estrutura atual e implementar uma forma de centralizar a chamada ao sanitizer.go.
+
+Preferência: Criar um método Sanitize() nos DTOs ou integrar a chamada de sanitização diretamente no processo de Bind/Validate do Echo, eliminando a necessidade de chamar o sanitizador manualmente linha a linha dentro de cada Handler.
+
+Padronização de DTOs Remanescentes:
+
+Revisar DTOs de domínios anteriores que ainda utilizam uuid.UUID nativo no mapeamento de entrada e converter para string com a tag validate:"uuid", garantindo que o Validator customizado gere erros 400 amigáveis e consistentes em todo o sistema.
+
+Consolidação Documental (Obrigatório):
+
+Atualizar docs/env_vars.md com todas as variáveis RATE_LIMIT_* e CORS_* finais.
+
+Revisar e finalizar docs/security_headers.md e docs/rate_limiting.md refletindo a implementação da limpeza de memória e a política de sanitização automática.
+
+RESTRIÇÕES ABSOLUTAS
+
+PROIBIDO adicionar novas funcionalidades de negócio ou novos endpoints.
+
+PROIBIDO introduzir dependências externas que exijam CGO.
+
+PROIBIDO alterar a lógica de persistência (Repository) ou banco de dados.
+
+PROIBIDO ignorar falhas de build estático (CGO_ENABLED=0).
+
+TESTES OBRIGATÓRIOS
+
+Teste de Vazamento: Simular a criação de múltiplos limitadores e validar (via teste unitário ou lógica de inspeção) que a limpeza ocorre.
+
+Teste de Regressão de Sanitização: Garantir que a automação da sanitização continua bloqueando tags <script> nos Handlers refatorados.
+
+Teste de Build: O binário deve compilar para scratch.
+
+CRITÉRIO DE VALIDAÇÃO
+
+A fase e o GRUPO 13 só serão considerados concluídos se:
+
+O mecanismo de cleanup do Rate Limiter estiver ativo.
+
+A sanitização estiver padronizada e menos verbosa nos Handlers.
+
+Os documentos em docs/ estiverem 100% precisos.
+
+go test ./internal/api/... passar integralmente.
+
+SAÍDA OBRIGATÓRIA
+
+SESSION_LOG_START | Versão: v1.0.0 | Data: DD/MM/YYYY
+- ARQUIVOS CRIADOS/MODIFICADOS:
+  - internal/api/middleware/rate_limiter.go
+  - internal/api/dto/... (DTOs refatorados)
+  - internal/api/handlers/... (Handlers simplificados)
+  - docs/env_vars.md
+  - docs/rate_limiting.md
+  - docs/security_headers.md
+
+- RESUMO TÉCNICO:
+  - Implementado cleanup automático de limitadores de IP (prevenção de memory leak).
+  - Padronizada a sanitização de inputs nos DTOs/Handlers, reduzindo código repetitivo.
+  - Concluída a transição de UUIDs nativos para strings validadas em todos os DTOs de entrada.
+  - Documentação técnica de segurança atualizada e sincronizada com o código.
+
+- DÍVIDA TÉCNICA / PENDÊNCIAS:
+  - [Listar apenas se algo crítico não pôde ser automatizado]
+
+- COMANDO DE VALIDAÇÃO:
+  - CGO_ENABLED=0 GOOS=linux go build ./cmd/main.go
+  - go test ./internal/api/middleware/... ./internal/api/handlers/... -v
+
+- SUGESTÃO DE COMMIT:
+  fix(fase-13.6): consolidate security middleware, automate sanitization and update docs
+
+SESSION_LOG_END
+CONDIÇÃO DE ENCERRAMENTO DO GRUPO 13
+
+Após esta tarefa, o sistema deve ser declarado Seguro e Estável na Borda, permitindo o avanço imediato para a FASE 14.1 (Refinamento de Lógica de Negócio).

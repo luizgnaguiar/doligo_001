@@ -31,7 +31,7 @@ func (t *InvoicePDFTask) Execute(ctx context.Context) error {
 	}
 
 	// 3. Save PDF locally
-	storageDir := "storage/pdfs"
+	storageDir := t.Usecase.pdfStoragePath
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
 		return fmt.Errorf("failed to create storage directory: %w", err)
 	}

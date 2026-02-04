@@ -11,7 +11,6 @@ import (
 type Usecase interface {
 	Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
-	GenerateInvoicePDF(ctx context.Context, invoiceID uuid.UUID) ([]byte, string, error)
 	QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error
 }
 

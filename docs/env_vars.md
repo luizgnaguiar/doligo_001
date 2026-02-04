@@ -311,3 +311,27 @@
   ```
   SECURITY_HEADERS_ENABLED=false
   ```
+
+---
+
+## 23. PDF_STORAGE_PATH
+
+
+
+- **Descrição**: Caminho no sistema de arquivos para o armazenamento dos PDFs gerados assincronamente.
+
+- **Tipo**: string
+
+- **Obrigatório**: NÃO
+
+- **Valor Default**: `storage/pdfs`
+
+- **Impacto se Ausente**: Utilizará a pasta `storage/pdfs` relativa ao diretório de execução.
+
+- **Exemplo**:
+
+  ```
+
+  PDF_STORAGE_PATH=/var/lib/doligo/pdfs
+
+  ```
