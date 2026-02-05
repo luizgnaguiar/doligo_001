@@ -1,0 +1,23 @@
+# Binaries
+/main
+/doligo_001_bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+
+# Output
+*.out
+*.log
+/app.log
+
+# OS
+.DS_Store
+
+# Keyfiles
+*.pem
+*.crt
