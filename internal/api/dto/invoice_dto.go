@@ -61,3 +61,9 @@ type InvoiceLineResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+type InvoicePDFStatusResponse struct {
+	Status       string `json:"status"`
+	PDFUrl       string `json:"pdf_url"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}

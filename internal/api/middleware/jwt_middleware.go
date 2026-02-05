@@ -5,7 +5,6 @@
 package middleware
 
 import (
-	"context"
 	"doligo_001/internal/domain"
 	"net/http"
 	"strings"
@@ -63,7 +62,7 @@ func (config *JWTConfig) JWT(next echo.HandlerFunc) echo.HandlerFunc {
 
 		// Inject user info into context using the domain's function
 		ctx := domain.ContextWithUserID(c.Request().Context(), claims.UserID)
-		ctx = context.WithValue(ctx, PermissionsKey, claims.Permissions)
+		ctx = domain.ContextWithPermissions(ctx, claims.Permissions)
 		c.SetRequest(c.Request().WithContext(ctx))
 
 		return next(c)

@@ -150,6 +150,8 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	invoiceGroup.POST("", invoiceHandler.CreateInvoice)
 	invoiceGroup.GET("/:id", invoiceHandler.GetInvoice)
 	invoiceGroup.POST("/:id/pdf", invoiceHandler.QueueInvoicePDF)
+	invoiceGroup.GET("/:id/status", invoiceHandler.GetInvoicePDFStatus, apiMiddleware.HasPermission("INVOICE_READ"))
+	invoiceGroup.GET("/:id/pdf", invoiceHandler.DownloadInvoicePDF, apiMiddleware.HasPermission("INVOICE_READ"))
 
 	slog.Info("All services initialized and routes registered.")
 	return gormDB, appMetrics, pdfWorkerPool, nil

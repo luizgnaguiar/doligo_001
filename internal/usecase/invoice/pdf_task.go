@@ -26,6 +26,7 @@ func (t *InvoicePDFTask) Execute(ctx context.Context) error {
 	if err != nil {
 		// Update status to failed
 		inv.PDFStatus = "failed"
+		inv.PDFErrorMessage = err.Error()
 		_ = t.Usecase.invoiceRepo.Update(ctx, inv)
 		return fmt.Errorf("failed to generate PDF for invoice %s: %w", t.InvoiceID, err)
 	}

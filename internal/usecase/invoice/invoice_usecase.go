@@ -133,9 +133,73 @@ func (u *usecase) QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.
 	if err := u.workerPool.Submit(task); err != nil {
 		// If submission fails, try to revert status or mark as failed
 		inv.PDFStatus = "failed"
+		inv.PDFErrorMessage = err.Error()
 		_ = u.invoiceRepo.Update(ctx, inv)
 		return fmt.Errorf("failed to submit PDF task: %w", err)
 	}
 
 	return nil
+}
+
+func (u *usecase) GetPDFStatus(ctx context.Context, id uuid.UUID) (*dto.InvoicePDFStatusResponse, error) {
+	inv, err := u.invoiceRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, _ := domain.UserIDFromContext(ctx)
+	permissions, _ := domain.PermissionsFromContext(ctx)
+
+	isOwner := inv.CreatedBy == userID
+	hasPermission := false
+	for _, p := range permissions {
+		if p == "INVOICE_READ" {
+			hasPermission = true
+			break
+		}
+	}
+
+	if !isOwner && !hasPermission {
+		return nil, fmt.Errorf("forbidden: you do not have permission to access this invoice")
+	}
+
+	var relativeURL string
+	if inv.PDFStatus == "completed" {
+		relativeURL = fmt.Sprintf("/api/v1/invoices/%s/pdf", id)
+	}
+
+	return &dto.InvoicePDFStatusResponse{
+		Status:       inv.PDFStatus,
+		PDFUrl:       relativeURL,
+		ErrorMessage: inv.PDFErrorMessage,
+	}, nil
+}
+
+func (u *usecase) GetPDFPath(ctx context.Context, id uuid.UUID) (string, error) {
+	inv, err := u.invoiceRepo.FindByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+
+	userID, _ := domain.UserIDFromContext(ctx)
+	permissions, _ := domain.PermissionsFromContext(ctx)
+
+	isOwner := inv.CreatedBy == userID
+	hasPermission := false
+	for _, p := range permissions {
+		if p == "INVOICE_READ" {
+			hasPermission = true
+			break
+		}
+	}
+
+	if !isOwner && !hasPermission {
+		return "", fmt.Errorf("forbidden: you do not have permission to access this invoice")
+	}
+
+	if inv.PDFStatus != "completed" {
+		return "", fmt.Errorf("PDF not ready")
+	}
+
+	return inv.PDFUrl, nil
 }

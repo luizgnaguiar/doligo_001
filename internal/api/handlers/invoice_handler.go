@@ -62,3 +62,31 @@ func (h *InvoiceHandler) QueueInvoicePDF(c echo.Context) error {
 
 	return c.NoContent(http.StatusAccepted)
 }
+
+func (h *InvoiceHandler) GetInvoicePDFStatus(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid ID")
+	}
+
+	status, err := h.usecase.GetPDFStatus(c.Request().Context(), id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "Invoice not found")
+	}
+
+	return c.JSON(http.StatusOK, status)
+}
+
+func (h *InvoiceHandler) DownloadInvoicePDF(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid ID")
+	}
+
+	filePath, err := h.usecase.GetPDFPath(c.Request().Context(), id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, err.Error())
+	}
+
+	return c.File(filePath)
+}

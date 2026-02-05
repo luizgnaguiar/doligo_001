@@ -66,6 +66,7 @@ func toInvoiceModel(d *invoice.Invoice) *models.Invoice {
 		TotalTax:     d.TotalTax,
 		PDFStatus:    d.PDFStatus,
 		PDFUrl:       d.PDFUrl,
+		PDFErrorMessage: d.PDFErrorMessage,
 		Lines:        lines,
 	}
 }
@@ -105,9 +106,12 @@ func toInvoiceDomain(m *models.Invoice) *invoice.Invoice {
 		TotalTax:     m.TotalTax,
 		PDFStatus:    m.PDFStatus,
 		PDFUrl:       m.PDFUrl,
+		PDFErrorMessage: m.PDFErrorMessage,
 		Lines:        lines,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
+		CreatedBy:    m.CreatedBy,
+		UpdatedBy:    m.UpdatedBy,
 	}
 	
 	// Map ThirdParty if it was loaded

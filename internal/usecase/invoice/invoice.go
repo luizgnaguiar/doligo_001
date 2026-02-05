@@ -12,6 +12,8 @@ type Usecase interface {
 	Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
 	QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error
+	GetPDFStatus(ctx context.Context, id uuid.UUID) (*dto.InvoicePDFStatusResponse, error)
+	GetPDFPath(ctx context.Context, id uuid.UUID) (string, error)
 }
 
 type Repository interface {

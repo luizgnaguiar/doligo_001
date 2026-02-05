@@ -18,6 +18,7 @@ type Invoice struct {
 	Lines           []InvoiceLine
 	PDFStatus       string
 	PDFUrl          string
+	PDFErrorMessage string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	CreatedBy       uuid.UUID

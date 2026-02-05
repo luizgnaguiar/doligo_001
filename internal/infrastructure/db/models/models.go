@@ -219,6 +219,7 @@ type Invoice struct {
 	TotalTax     float64    `gorm:"type:numeric(15,4);not null;default:0"`
 	PDFStatus    string     `gorm:"size:20;default:'pending'"`
 	PDFUrl       string     `gorm:"type:text"`
+	PDFErrorMessage string  `gorm:"type:text"`
 	Lines        []InvoiceLine `gorm:"foreignKey:InvoiceID"`
 }
 

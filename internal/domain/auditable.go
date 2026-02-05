@@ -23,6 +23,8 @@ type contextKey string
 const (
 	// UserIDKey is the key used to store and retrieve the user ID from the context.
 	UserIDKey contextKey = "userID"
+	// PermissionsKey is the key used to store and retrieve permissions from the context.
+	PermissionsKey contextKey = "permissions"
 )
 
 // ContextWithUserID returns a new context with the provided user ID.
@@ -35,4 +37,15 @@ func ContextWithUserID(ctx context.Context, userID uuid.UUID) context.Context {
 func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	userID, ok := ctx.Value(UserIDKey).(uuid.UUID)
 	return userID, ok
+}
+
+// ContextWithPermissions returns a new context with the provided permissions.
+func ContextWithPermissions(ctx context.Context, permissions []string) context.Context {
+	return context.WithValue(ctx, PermissionsKey, permissions)
+}
+
+// PermissionsFromContext extracts the permissions from the context.
+func PermissionsFromContext(ctx context.Context) ([]string, bool) {
+	permissions, ok := ctx.Value(PermissionsKey).([]string)
+	return permissions, ok
 }
