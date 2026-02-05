@@ -1,85 +1,18 @@
-SESSION_LOG_START | Versão: v1.0.1 | Data: 03/02/2026
+### SESSION_LOG_START | Versão: v1.0.0 | Data: 05/02/2026
 - ARQUIVOS CRIADOS/MODIFICADOS:
-  - cmd/main.go
-
+  - setup.go (Temporário/Removido) - Script de seeding.
+  - smoke.go (Temporário/Removido) - Script de teste.
+  - tmp_pdfs/ (Temporário/Removido) - Volume para PDFs.
 - RESUMO TÉCNICO:
-  - INVESTIGAÇÃO:
-    - [Etapa 1: Foreground execution]
-      Resultado: A aplicação encerrava imediatamente após uma falha na conexão com o banco de dados. O log indicava "failed to initialize database".
-    
-    - [Etapa 2: Variáveis mínimas]
-      Resultado: Não foi necessário, o problema foi identificado na Etapa 1.
-    
-    - [Etapa 3: Análise de código]
-      Resultado: O `main.go` chamava `initServices` de forma bloqueante. Um erro nesta função (como a falha de conexão com o DB) causava a chamada de `os.Exit(1)`, terminando a aplicação.
-
-  - CORREÇÃO APLICADA:
-    - O arquivo `cmd/main.go` foi refatorado para adotar a inicialização não-bloqueante.
-    - A inicialização dos serviços dependentes de banco de dados (`initServices`) foi movida para uma goroutine.
-    - O servidor HTTP (Echo) é iniciado imediatamente na goroutine principal, garantindo que o endpoint `/health` esteja sempre disponível, even though other services might fail to start.
-    - A aplicação agora loga o erro de inicialização dos serviços, mas não encerra, permitindo que o readiness probe `/ready` falhe e impeça o roteamento de tráfego para a instância não saudável.
-  
-  - VALIDAÇÃO:
-    - Binário executado com sucesso em Docker ubuntu:22.04.
-    - Logs de inicialização visíveis, mostrando a falha de conexão com o banco de dados sem crashar a aplicação.
-    - Endpoint /health respondeu HTTP 200 com a mensagem "OK".
-
-- CAUSA RAIZ:
-  A rotina de inicialização (`main`) era bloqueante e não resiliente a falhas de dependências externas (banco de dados). Qualquer erro durante a inicialização dos serviços causava um `os.Exit(1)`, encerrando abruptamente a aplicação e impedindo a resposta até mesmo de endpoints de liveness como `/health`.
-
-- EVIDÊNCIA DE SUCESSO:
-  Ambiente: Docker ubuntu:22.04
-  
-  Comando de build:
-  $ CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
-  
-  Comando de execução:
-  $ docker run --rm -d -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
-  
-  Logs (primeiras 10 linhas):
-  {"time":"2026-02-03T22:59:16.281643125Z","level":"INFO","msg":"Logger initialized","level":"INFO"}
-  {"time":"2026-02-03T22:59:16.283117833Z","level":"INFO","msg":"Application Environment","env":"development"}
-  {"time":"2026-02-03T22:59:16.284332042Z","level":"INFO","msg":"Starting server","port":"8080"}
-  {"time":"2026-02-03T22:59:16.284735167Z","level":"INFO","msg":"Starting database and services initialization..."}
-  ⇨ http server started on [::]:8080
-  [error] failed to initialize database...
-  {"time":"2026-02-03T22:59:16.29292175Z","level":"ERROR","msg":"Failed to initialize services"...}
-  
-  Resposta do /health:
-  $ curl http://localhost:8080/health
-  OK
-
+  - Executado Smoke Test End-to-End em ambiente simulado de produção (Docker/Scratch).
+  - Validado fluxo: Login -> Cadastro (ThirdParty/Item) -> Estoque (Movimentação) -> Fatura (Criação) -> PDF (Geração/Async).
+  - Identificado BUG CRÍTICO: Entidade `InvoiceLine` no domínio possui campo `CreatedBy` (uuid.UUID) que defaulta para `00000000-0000-0000-0000-000000000000`. O Repositório persiste este valor, violando restrição de chave estrangeira na tabela `invoice_lines`.
+  - WORKAROUND APLICADO: Inserção via Raw SQL de um "System User" com ID `0000...` no script de setup para satisfazer a FK sem alterar código.
+  - Validada geração de PDF em container Scratch (sem dependências de OS).
+  - Validada observabilidade (Correlation IDs nos logs).
 - DÍVIDA TÉCNICA / PENDÊNCIAS:
-  Nenhuma.
-
+  - CORREÇÃO URGENTE: Alterar `InvoiceLine.CreatedBy` para `*uuid.UUID` ou garantir preenchimento no Usecase antes da persistência.
+  - Refatorar Repositório para não assumir valor default de structs de domínio como válidos para persistência se violarem FKs.
 - COMANDO DE VALIDAÇÃO:
-  - CGO_ENABLED=0 GOOS=linux go build -o doligo ./cmd/main.go
-  - docker run --rm -d --name doligo-test -p 8080:8080 -v $(pwd)/doligo:/app/doligo ubuntu:22.04 /app/doligo
-  - sleep 5 && curl http://localhost:8080/health && docker stop doligo-test
-
-SESSION_LOG_END
-
-### SESSION_LOG_START | Versão: [v1.2.1] | Data: [04/02/2026]
-- ARQUIVOS CRIADOS/MODIFICADOS: 
-  - internal/infrastructure/repository/stock_repository_ct02_test.go
-  - docs/audit_logs.md
-  - docs/env_vars.md
-  - internal/infrastructure/config/config.go
-  - internal/usecase/invoice/invoice.go
-  - internal/usecase/invoice/invoice_usecase.go
-  - internal/usecase/invoice/invoice_usecase_tax_test.go
-  - internal/usecase/invoice/pdf_task.go
-  - internal/api/handlers/invoice_handler.go
-  - internal/api/handlers/invoice_handler_test.go
-  - cmd/main.go
-- RESUMO TÉCNICO:
-  - Estabilização da infraestrutura de testes de integração: Corrigidas assinaturas de InitDatabase e RunMigrations no stock_repository_ct02_test.go.
-  - Refatoração do CT-02: Garantido o uso de conexões distintas do pool para validar Pessimistic Locking em transações simultâneas.
-  - Consolidação Documental: Criado docs/audit_logs.md detalhando a estrutura de auditoria e correlação de logs.
-  - Configuração: Introduzida a variável PDF_STORAGE_PATH (default storage/pdfs) para centralizar caminhos de armazenamento.
-  - Cleanup de PDF: Removida a geração síncrona de PDF (GenerateInvoicePDF) da Usecase, Handler e Rotas, consolidando o uso do Worker Pool assíncrono.
-- DÍVIDA TÉCNICA / PENDÊNCIAS:
-  - N/A
-- COMANDO DE VALIDAÇÃO:
-  - CGO_ENABLED=0 go build -o doligo ./cmd/main.go && go test -v ./internal/usecase/invoice/...
+  - N/A (Ambiente destruído após validação).
 ### SESSION_LOG_END
