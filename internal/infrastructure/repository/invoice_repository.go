@@ -46,6 +46,20 @@ func (r *invoiceRepository) Update(ctx context.Context, domainInvoice *invoice.I
 	return r.db.WithContext(ctx).Save(modelInvoice).Error
 }
 
+func (r *invoiceRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Delete lines first
+		if err := tx.Where("invoice_id = ?", id).Delete(&models.InvoiceLine{}).Error; err != nil {
+			return err
+		}
+		// Delete invoice
+		if err := tx.Delete(&models.Invoice{}, "id = ?", id).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func toInvoiceModel(d *invoice.Invoice) *models.Invoice {
 	lines := make([]models.InvoiceLine, len(d.Lines))
 	for i, line := range d.Lines {

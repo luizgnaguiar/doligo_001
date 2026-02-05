@@ -91,7 +91,7 @@ func initServices(ctx context.Context, cfg *config.Config, e *echo.Echo) (*gorm.
 	bomUsecase := bom_uc.NewBOMUsecase(txManager, bomRepo, productionRepo, stockRepo, stockMoveRepo, stockLedgerRepo, itemRepo, auditService)
 	marginUsecase := margin_uc.NewMarginUsecase(marginRepo)
 	emailSender := email.NewSimpleEmailSender()
-	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender, pdfWorkerPool, cfg.PDFStoragePath)
+	invoiceUsecase := invoice_uc.NewUsecase(invoiceRepo, itemRepo, pdfGenerator, emailSender, pdfWorkerPool, auditService, cfg.PDFStoragePath)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authUsecase)

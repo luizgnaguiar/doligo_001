@@ -11,6 +11,7 @@ import (
 type Usecase interface {
 	Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*invoice.Invoice, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 	QueueInvoicePDFGeneration(ctx context.Context, invoiceID uuid.UUID) error
 	GetPDFStatus(ctx context.Context, id uuid.UUID) (*dto.InvoicePDFStatusResponse, error)
 	GetPDFPath(ctx context.Context, id uuid.UUID) (string, error)
@@ -19,6 +20,7 @@ type Usecase interface {
 type Repository interface {
 	Create(ctx context.Context, invoice *invoice.Invoice) error
 	Update(ctx context.Context, invoice *invoice.Invoice) error
+	Delete(ctx context.Context, id uuid.UUID) error
 	FindByID(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
 	FindByIDWithDetails(ctx context.Context, id uuid.UUID) (*invoice.Invoice, error)
 }

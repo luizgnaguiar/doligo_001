@@ -14,6 +14,7 @@ import (
 	"doligo_001/internal/domain/identity"
 	apiMiddleware "doligo_001/internal/api/middleware"
 	"doligo_001/internal/usecase"
+	"github.com/google/uuid"
 )
 
 // ErrInvalidCredentials is returned when the email or password is incorrect.
@@ -39,13 +40,16 @@ func NewAuthUsecase(userRepo identity.UserRepository, jwtSecret []byte, jwtTTL t
 
 // Login authenticates a user and returns a JWT token.
 func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (string, error) {
+	corrID, _ := apiMiddleware.FromContext(ctx)
+
 	user, err := uc.userRepo.FindByEmail(ctx, email)
 	if err != nil {
-		// In a real app, you might want to return a generic error to avoid user enumeration attacks.
+		uc.auditService.Log(ctx, uuid.Nil, "identity", email, "LOGIN_FAILURE", nil, nil, corrID)
 		return "", ErrInvalidCredentials
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		uc.auditService.Log(ctx, user.ID, "identity", user.ID.String(), "LOGIN_FAILURE", nil, nil, corrID)
 		return "", ErrInvalidCredentials
 	}
 
@@ -73,7 +77,6 @@ func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (strin
 		return "", err
 	}
 
-	corrID, _ := apiMiddleware.FromContext(ctx)
 	uc.auditService.Log(ctx, user.ID, "identity", user.ID.String(), "LOGIN", nil, nil, corrID)
 
 	return tokenString, nil

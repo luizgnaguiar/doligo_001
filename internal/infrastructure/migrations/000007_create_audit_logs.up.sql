@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID REFERENCES users(id),
     resource_name VARCHAR(255) NOT NULL,
     resource_id VARCHAR(255) NOT NULL,
     action VARCHAR(50) NOT NULL,

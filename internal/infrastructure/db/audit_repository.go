@@ -10,10 +10,11 @@ import (
 type auditModel struct {
 	ID            string    `gorm:"type:uuid;primaryKey"`
 	Timestamp     time.Time `gorm:"not null"`
-	UserID        string    `gorm:"type:uuid;not null"`
+	UserID        *string   `gorm:"type:uuid"`
 	ResourceName  string    `gorm:"not null"`
 	ResourceID    string    `gorm:"not null"`
 	Action        string    `gorm:"not null"`
+	Severity      string    `gorm:"not null;default:INFO"`
 	OldValues     []byte    `gorm:"type:jsonb"`
 	NewValues     []byte    `gorm:"type:jsonb"`
 	CorrelationID string
@@ -32,13 +33,20 @@ func NewGormAuditRepository(db *gorm.DB) domain.AuditRepository {
 }
 
 func (r *gormAuditRepository) Save(ctx context.Context, log *domain.AuditLog) error {
+	var userIDStr *string
+	if log.UserID != nil {
+		s := log.UserID.String()
+		userIDStr = &s
+	}
+
 	model := auditModel{
 		ID:            log.ID.String(),
 		Timestamp:     log.Timestamp,
-		UserID:        log.UserID.String(),
+		UserID:        userIDStr,
 		ResourceName:  log.ResourceName,
 		ResourceID:    log.ResourceID,
 		Action:        log.Action,
+		Severity:      log.Severity,
 		OldValues:     []byte(log.OldValues),
 		NewValues:     []byte(log.NewValues),
 		CorrelationID: log.CorrelationID,

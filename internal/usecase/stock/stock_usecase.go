@@ -24,6 +24,7 @@ var (
 // UseCase defines the interface for stock management use cases.
 type UseCase interface {
 	CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error)
+	ReverseStockMovement(ctx context.Context, movementID uuid.UUID, reason string) (*stock.StockMovement, error)
 	CreateWarehouse(ctx context.Context, name string) (*stock.Warehouse, error)
 	ListWarehouses(ctx context.Context) ([]*stock.Warehouse, error)
 	GetWarehouseByID(ctx context.Context, id uuid.UUID) (*stock.Warehouse, error)
@@ -264,4 +265,111 @@ func (uc *stockUseCase) CreateBin(ctx context.Context, name string, warehouseID 
 
 func (uc *stockUseCase) ListBinsByWarehouse(ctx context.Context, warehouseID uuid.UUID) ([]*stock.Bin, error) {
 	return uc.binRepo.ListByWarehouse(ctx, warehouseID)
+}
+
+func (uc *stockUseCase) ReverseStockMovement(ctx context.Context, movementID uuid.UUID, reason string) (*stock.StockMovement, error) {
+	var reversedMovement *stock.StockMovement
+	var quantityBefore float64
+	var quantityAfter float64
+
+	err := uc.txManager.Transaction(ctx, func(tx *gorm.DB) error {
+		txStockRepo := uc.stockRepo.WithTx(tx)
+		txMovementRepo := uc.stockMoveRepo.WithTx(tx)
+		txLedgerRepo := uc.stockLedgerRepo.WithTx(tx)
+
+		// 1. Find original movement
+		origMove, err := txMovementRepo.GetByID(ctx, movementID)
+		if err != nil {
+			return err
+		}
+
+		// 2. Calculate reverse type and quantity
+		reverseType := stock.MovementTypeIn
+		if origMove.Type == stock.MovementTypeIn {
+			reverseType = stock.MovementTypeOut
+		}
+
+		// 3. Get current stock with lock
+		currentStock, err := txStockRepo.GetStockForUpdate(ctx, origMove.ItemID, origMove.WarehouseID, origMove.BinID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		quantityBefore = 0.0
+		if currentStock != nil {
+			quantityBefore = currentStock.Quantity
+		}
+
+		// 4. Validate reverse movement
+		if reverseType == stock.MovementTypeOut {
+			if quantityBefore < origMove.Quantity {
+				return ErrInsufficientStock
+			}
+			quantityAfter = quantityBefore - origMove.Quantity
+		} else {
+			quantityAfter = quantityBefore + origMove.Quantity
+		}
+
+		// 5. Create Reversal StockMovement
+		userID, _ := domain.UserIDFromContext(ctx)
+		movement := &stock.StockMovement{
+			ID:          uuid.New(),
+			ItemID:      origMove.ItemID,
+			WarehouseID: origMove.WarehouseID,
+			BinID:       origMove.BinID,
+			Type:        reverseType,
+			Quantity:    origMove.Quantity,
+			Reason:      "REVERSAL: " + reason,
+			HappenedAt:  time.Now(),
+		}
+		movement.SetCreatedBy(userID)
+
+		if err := txMovementRepo.Create(ctx, movement); err != nil {
+			return err
+		}
+
+		reversedMovement = movement
+
+		// 6. Upsert Stock
+		stockToUpdate := &stock.Stock{
+			ItemID:      origMove.ItemID,
+			WarehouseID: origMove.WarehouseID,
+			BinID:       origMove.BinID,
+			Quantity:    quantityAfter,
+			UpdatedAt:   time.Now(),
+		}
+		if err := txStockRepo.UpsertStock(ctx, stockToUpdate); err != nil {
+			return err
+		}
+
+		// 7. Create StockLedger entry
+		ledgerEntry := &stock.StockLedger{
+			ID:              uuid.New(),
+			StockMovementID: movement.ID,
+			ItemID:          origMove.ItemID,
+			WarehouseID:     origMove.WarehouseID,
+			BinID:           origMove.BinID,
+			MovementType:    reverseType,
+			QuantityChange:  origMove.Quantity,
+			QuantityBefore:  quantityBefore,
+			QuantityAfter:   quantityAfter,
+			Reason:          movement.Reason,
+			HappenedAt:      movement.HappenedAt,
+			RecordedAt:      time.Now(),
+			RecordedBy:      userID,
+		}
+
+		return txLedgerRepo.Create(ctx, ledgerEntry)
+	})
+
+	if err == nil {
+		userID, _ := domain.UserIDFromContext(ctx)
+		corrID, _ := middleware.FromContext(ctx)
+		uc.auditService.Log(ctx, userID, "stock", reversedMovement.ID.String(), "REVERSAL",
+			map[string]interface{}{"original_movement_id": movementID},
+			reversedMovement,
+			corrID)
+	}
+
+	return reversedMovement, err
 }

@@ -178,6 +178,14 @@ func (r *gormStockMovementRepository) Create(ctx context.Context, sm *stock.Stoc
 	return r.db.WithContext(ctx).Create(model).Error
 }
 
+func (r *gormStockMovementRepository) GetByID(ctx context.Context, id uuid.UUID) (*stock.StockMovement, error) {
+	var model models.StockMovement
+	if err := r.db.WithContext(ctx).First(&model, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return toStockMovementDomainEntity(&model), nil
+}
+
 // gormStockLedgerRepository is a GORM implementation of the stock.StockLedgerRepository.
 type gormStockLedgerRepository struct {
 	db *gorm.DB

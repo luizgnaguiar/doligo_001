@@ -131,7 +131,8 @@ type BinRepository interface {
 // which must be handled transactionally.
 type StockMovementRepository interface {
 	WithTx(tx *gorm.DB) StockMovementRepository
-    Create(ctx context.Context, movement *StockMovement) error
+	Create(ctx context.Context, movement *StockMovement) error
+	GetByID(ctx context.Context, id uuid.UUID) (*StockMovement, error)
 }
 
 // StockLedgerRepository defines the contract for creating immutable ledger entries.

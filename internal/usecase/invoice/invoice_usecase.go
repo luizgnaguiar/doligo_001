@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"doligo_001/internal/api/dto"
+	"doligo_001/internal/api/middleware"
 	"doligo_001/internal/domain"
 	"doligo_001/internal/infrastructure/pdf"
 	"doligo_001/internal/infrastructure/worker"
+	audit_uc "doligo_001/internal/usecase"
 	item_usecase "doligo_001/internal/usecase/item"
 
 	"github.com/google/uuid"
@@ -22,16 +24,18 @@ type usecase struct {
 	pdfGen         pdf.Generator
 	emailSender    email.EmailSender
 	workerPool     *worker.WorkerPool
+	auditService   audit_uc.AuditService
 	pdfStoragePath string
 }
 
-func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender, workerPool *worker.WorkerPool, pdfStoragePath string) Usecase {
+func NewUsecase(invoiceRepo Repository, itemRepo item_usecase.Repository, pdfGen pdf.Generator, emailSender email.EmailSender, workerPool *worker.WorkerPool, auditService audit_uc.AuditService, pdfStoragePath string) Usecase {
 	return &usecase{
 		invoiceRepo:    invoiceRepo,
 		itemRepo:       itemRepo,
 		pdfGen:         pdfGen,
 		emailSender:    emailSender,
 		workerPool:     workerPool,
+		auditService:   auditService,
 		pdfStoragePath: pdfStoragePath,
 	}
 }
@@ -202,4 +206,22 @@ func (u *usecase) GetPDFPath(ctx context.Context, id uuid.UUID) (string, error) 
 	}
 
 	return inv.PDFUrl, nil
+}
+
+func (u *usecase) Delete(ctx context.Context, id uuid.UUID) error {
+	userID, _ := domain.UserIDFromContext(ctx)
+	
+	oldInvoice, err := u.invoiceRepo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := u.invoiceRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	corrID, _ := middleware.FromContext(ctx)
+	u.auditService.Log(ctx, userID, "invoice", id.String(), "DELETE", oldInvoice, nil, corrID)
+
+	return nil
 }
