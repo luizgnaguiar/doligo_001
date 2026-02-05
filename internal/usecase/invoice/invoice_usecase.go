@@ -82,6 +82,8 @@ func (u *usecase) Create(ctx context.Context, req *dto.CreateInvoiceRequest) (*i
 			NetPrice:    netPrice,
 			TotalAmount: lineTotalAmount,
 			TotalCost:   lineReq.Quantity * item.CostPrice,
+			CreatedBy:   userID,
+			UpdatedBy:   userID,
 		}
 		totalAmount += line.TotalAmount
 		totalCost += line.TotalCost

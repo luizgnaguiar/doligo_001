@@ -88,7 +88,9 @@ func toInvoiceModel(d *invoice.Invoice) *models.Invoice {
 func toInvoiceLineModel(d *invoice.InvoiceLine) *models.InvoiceLine {
 	return &models.InvoiceLine{
 		BaseModel: models.BaseModel{
-			ID: d.ID,
+			ID:        d.ID,
+			CreatedBy: d.CreatedBy,
+			UpdatedBy: d.UpdatedBy,
 		},
 		InvoiceID:   d.InvoiceID,
 		ItemID:      d.ItemID,
