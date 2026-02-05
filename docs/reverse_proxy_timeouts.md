@@ -151,4 +151,5 @@ Se um erro `504 Gateway Timeout` ocorrer antes do tempo configurado (`proxy_read
 ---
 
 **Documento produzido em conformidade com FASE 12.2**  
+**Complementado por `docs/production_notes.md` (FASE 17.2)**  
 **Nenhuma configuração real foi aplicada**

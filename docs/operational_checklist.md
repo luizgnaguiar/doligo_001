@@ -25,7 +25,7 @@ This document outlines the minimum verifiable operational checklist for deployin
 *   **Status:** PENDING (Requires infrastructure team action)
 *   **Verification:** A reverse proxy (e.g., Nginx, Traefik, Caddy) **MUST** be configured in the production environment.
     *   Request timeout for routes generating PDF documents (`/api/v1/invoices/{id}/pdf`) **MUST** be explicitly set to at least `30 seconds`.
-*   **Evidence:** Configuration files of the reverse proxy (e.g., `nginx.conf`, Traefik dynamic configuration). This is an infrastructure-level configuration and is outside the application's repository.
+*   **Evidence:** Recommendations documented in `docs/production_notes.md`. Configuration files of the reverse proxy (e.g., `nginx.conf`, Traefik dynamic configuration) are infrastructure-level and reside outside the application's repository.
 
 ## 4. Automatic Database Backup
 
