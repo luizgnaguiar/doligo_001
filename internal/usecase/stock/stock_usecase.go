@@ -304,6 +304,7 @@ func (uc *stockUseCase) ReverseStockMovement(ctx context.Context, movementID uui
 		txStockRepo := uc.stockRepo.WithTx(tx)
 		txMovementRepo := uc.stockMoveRepo.WithTx(tx)
 		txLedgerRepo := uc.stockLedgerRepo.WithTx(tx)
+		txItemRepo := uc.itemRepo.WithTx(tx)
 
 		// 1. Find original movement
 		origMove, err := txMovementRepo.GetByID(ctx, movementID)
@@ -315,6 +316,45 @@ func (uc *stockUseCase) ReverseStockMovement(ctx context.Context, movementID uui
 		reverseType := stock.MovementTypeIn
 		if origMove.Type == stock.MovementTypeIn {
 			reverseType = stock.MovementTypeOut
+		}
+
+		// CMP Logic: If we are putting stock BACK (Reverse Type IN), we must update CMP.
+		// Since we lack the specific unit cost of the original movement, we use the current AverageCost
+		// as a neutral proxy to maintain consistency without introducing artificial variance.
+		if reverseType == stock.MovementTypeIn {
+			it, err := txItemRepo.GetByID(ctx, origMove.ItemID)
+			if err != nil {
+				return err
+			}
+
+			totalQtyBefore, err := txStockRepo.GetTotalQuantity(ctx, origMove.ItemID)
+			if err != nil {
+				return err
+			}
+
+			// CMP Calculation
+			// Current Value = Current Total Qty * Current Average Cost
+			// Value of Return = Return Qty * Current Average Cost (Proxy)
+			// New CMP = (Current Value + Value of Return) / (Current Total Qty + Return Qty)
+			
+			// Note: Mathematically, using the same AverageCost yields the same result,
+			// but we perform the logic to support future enhancements (e.g. if we fetch historical cost).
+			
+			oldTotalValue := totalQtyBefore * it.AverageCost
+			reversalValue := origMove.Quantity * it.AverageCost 
+			totalQtyAfter := totalQtyBefore + origMove.Quantity
+			
+			if totalQtyAfter > 0 {
+				newCMP := (oldTotalValue + reversalValue) / totalQtyAfter
+				it.AverageCost = newCMP
+				it.UpdatedAt = time.Now()
+				userID, _ := domain.UserIDFromContext(ctx)
+				it.UpdatedBy = userID
+				
+				if err := txItemRepo.Update(ctx, it); err != nil {
+					return err
+				}
+			}
 		}
 
 		// 3. Get current stock with lock

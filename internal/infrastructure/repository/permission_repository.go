@@ -31,6 +31,9 @@ func (r *GormPermissionRepository) FindByName(ctx context.Context, name string) 
 
 // FindByID retrieves a permission by its unique identifier.
 func (r *GormPermissionRepository) FindByID(ctx context.Context, id uuid.UUID) (*identity.Permission, error) {
+	if id == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	var pModel models.Permission
 	if err := r.db.WithContext(ctx).First(&pModel, "id = ?", id).Error; err != nil {
 		return nil, err

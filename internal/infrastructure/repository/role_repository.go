@@ -31,6 +31,9 @@ func (r *GormRoleRepository) FindByName(ctx context.Context, name string) (*iden
 
 // FindByID retrieves a role by its unique identifier.
 func (r *GormRoleRepository) FindByID(ctx context.Context, id uuid.UUID) (*identity.Role, error) {
+	if id == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	var roleModel models.Role
 	if err := r.db.WithContext(ctx).Preload("Permissions").First(&roleModel, "id = ?", id).Error; err != nil {
 		return nil, err

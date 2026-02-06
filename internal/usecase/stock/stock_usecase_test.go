@@ -349,3 +349,54 @@ func TestCreateBin_HappyPath(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, bin)
 }
+
+func TestReverseStockMovement_ReversingOut_UpdatesCMP(t *testing.T) {
+	s := setupTestSuite()
+	origMoveID := uuid.New()
+	
+	// Original Movement was OUT (Sale)
+	origMove := &stock.StockMovement{
+		ID:          origMoveID,
+		ItemID:      s.itemID,
+		WarehouseID: s.warehouseID,
+		BinID:       &s.binID,
+		Type:        stock.MovementTypeOut,
+		Quantity:    5.0,
+	}
+
+	mockItem := &item.Item{ID: s.itemID, Name: "Test Item", AverageCost: 15.0}
+	currentStock := &stock.Stock{ItemID: s.itemID, WarehouseID: s.warehouseID, BinID: &s.binID, Quantity: 10.0}
+
+	s.txManager.On("Transaction", mock.Anything, mock.Anything).Return(nil).Once()
+	
+	// 1. Get Original Movement
+	s.stockMoveRepo.On("GetByID", mock.Anything, origMoveID).Return(origMove, nil).Once()
+	
+	// 2. CMP Logic (Reversing OUT -> IN)
+	s.itemRepo.On("GetByID", mock.Anything, s.itemID).Return(mockItem, nil).Once()
+	s.stockRepo.On("GetTotalQuantity", mock.Anything, s.itemID).Return(10.0, nil).Once()
+	s.itemRepo.On("Update", mock.Anything, mock.MatchedBy(func(i *item.Item) bool {
+		return i.AverageCost == 15.0 // (10*15 + 5*15)/15 = 15
+	})).Return(nil).Once()
+
+	// 3. Get Stock For Update
+	s.stockRepo.On("GetStockForUpdate", mock.Anything, s.itemID, s.warehouseID, &s.binID).Return(currentStock, nil).Once()
+
+	// 4. Create Reversal Movement
+	s.stockMoveRepo.On("Create", mock.Anything, mock.AnythingOfType("*stock.StockMovement")).Return(nil).Once()
+
+	// 5. Upsert Stock (10 + 5 = 15)
+	s.stockRepo.On("UpsertStock", mock.Anything, mock.MatchedBy(func(st *stock.Stock) bool {
+		return st.Quantity == 15.0
+	})).Return(nil).Once()
+
+	// 6. Ledger
+	s.stockLedgerRepo.On("Create", mock.Anything, mock.AnythingOfType("*stock.StockLedger")).Return(nil).Once()
+
+	reversedMovement, err := s.useCase.ReverseStockMovement(s.ctx, origMoveID, "Customer Return")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, reversedMovement)
+	assert.Equal(t, stock.MovementTypeIn, reversedMovement.Type)
+	assert.Equal(t, 5.0, reversedMovement.Quantity)
+}
