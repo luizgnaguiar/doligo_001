@@ -21,3 +21,6 @@
 # Keyfiles
 *.pem
 *.crt
+
+# Docs & Logs
+*.txt

@@ -1,2 +1,0 @@
-- chatgpt usei tudo os token, montar o projeto semelhante no claude pra que possa usar os dois. 
-- fase 11.1-R feita como correçao do prompt, 11.2 ja foi corigido. jogar os dois prompts em uma conversa nova pra gerar 11.3 e 11.4
