@@ -95,6 +95,7 @@ type CreateStockMovementRequest struct {
 	BinID       string  `json:"bin_id" validate:"required,uuid"`
 	Type        string  `json:"type" validate:"required,oneof=IN OUT"`
 	Quantity    float64 `json:"quantity" validate:"required,gt=0"`
+	UnitPrice   float64 `json:"unit_price" validate:"omitempty,ge=0"` // Required for IN movements to update CMP
 	Reason      string  `json:"reason" validate:"max=255"`
 }
 

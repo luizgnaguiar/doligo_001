@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"doligo_001/internal/domain/thirdparty"
 	"github.com/google/uuid"
@@ -19,6 +20,9 @@ func NewInvoiceRepository(db *gorm.DB) *invoiceRepository {
 }
 
 func (r *invoiceRepository) Create(ctx context.Context, domainInvoice *invoice.Invoice) error {
+	if domainInvoice.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	modelInvoice := toInvoiceModel(domainInvoice)
 	return r.db.WithContext(ctx).Create(modelInvoice).Error
 }
@@ -42,6 +46,9 @@ func (r *invoiceRepository) FindByIDWithDetails(ctx context.Context, id uuid.UUI
 }
 
 func (r *invoiceRepository) Update(ctx context.Context, domainInvoice *invoice.Invoice) error {
+	if domainInvoice.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	modelInvoice := toInvoiceModel(domainInvoice)
 	return r.db.WithContext(ctx).Save(modelInvoice).Error
 }

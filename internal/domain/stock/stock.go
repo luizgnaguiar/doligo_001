@@ -144,7 +144,8 @@ type StockLedgerRepository interface {
 // StockRepository defines the contract for stock-related queries and updates, including pessimistic locking.
 type StockRepository interface {
 	WithTx(tx *gorm.DB) StockRepository
-    GetStock(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
-    GetStockForUpdate(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
-    UpsertStock(ctx context.Context, stock *Stock) error
+	GetStock(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
+	GetStockForUpdate(ctx context.Context, itemID, warehouseID uuid.UUID, binID *uuid.UUID) (*Stock, error)
+	GetTotalQuantity(ctx context.Context, itemID uuid.UUID) (float64, error)
+	UpsertStock(ctx context.Context, stock *Stock) error
 }

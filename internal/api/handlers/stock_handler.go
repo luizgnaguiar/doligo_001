@@ -145,6 +145,7 @@ func (h *StockHandler) CreateStockMovement(c echo.Context) error {
 		binID,
 		stock.MovementType(req.Type),
 		req.Quantity,
+		req.UnitPrice,
 		req.Reason,
 	)
 	if err != nil {

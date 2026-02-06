@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"doligo_001/internal/domain/thirdparty"
 	"doligo_001/internal/infrastructure/db/models"
@@ -23,6 +24,9 @@ func NewGormThirdPartyRepository(db *gorm.DB) thirdparty.Repository {
 
 // Create persists a new third party to the data store.
 func (r *gormThirdPartyRepository) Create(ctx context.Context, tp *thirdparty.ThirdParty) error {
+	if tp.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromThirdPartyDomainEntity(tp)
 	return r.db.WithContext(ctx).Create(model).Error
 }
@@ -38,6 +42,9 @@ func (r *gormThirdPartyRepository) GetByID(ctx context.Context, id uuid.UUID) (*
 
 // Update modifies an existing third party in the data store.
 func (r *gormThirdPartyRepository) Update(ctx context.Context, tp *thirdparty.ThirdParty) error {
+	if tp.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	model := fromThirdPartyDomainEntity(tp)
 	return r.db.WithContext(ctx).Save(model).Error
 }

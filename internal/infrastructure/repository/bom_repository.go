@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"doligo_001/internal/domain/bom"
 	"doligo_001/internal/infrastructure/db"
 	"doligo_001/internal/infrastructure/db/models"
@@ -34,6 +35,9 @@ func (r *gormBomRepository) WithTx(tx *gorm.DB) bom.Repository {
 
 // Create creates a new BillOfMaterials in the database.
 func (r *gormBomRepository) Create(ctx context.Context, b *bom.BillOfMaterials) error {
+	if b.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromBomDomainEntity(b)
 	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
 		return fmt.Errorf("failed to create BOM: %w", err)
@@ -69,6 +73,9 @@ func (r *gormBomRepository) GetByProductID(ctx context.Context, productID uuid.U
 
 // Update updates an existing BillOfMaterials in the database using an explicit transactional approach.
 func (r *gormBomRepository) Update(ctx context.Context, b *bom.BillOfMaterials) error {
+	if b.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	return r.transactioner.Transaction(ctx, func(tx *gorm.DB) error {
 		// 1. Fetch the existing BOM with its components
 		var existingModel models.BillOfMaterials
@@ -190,6 +197,9 @@ func (r *gormProductionRecordRepository) WithTx(tx *gorm.DB) bom.ProductionRecor
 
 // Create creates a new ProductionRecord in the database.
 func (r *gormProductionRecordRepository) Create(ctx context.Context, pr *bom.ProductionRecord) error {
+	if pr.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromProductionRecordDomainEntity(pr)
 	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
 		return fmt.Errorf("failed to create production record: %w", err)

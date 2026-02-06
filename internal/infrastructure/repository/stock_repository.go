@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"doligo_001/internal/domain/stock"
 	"doligo_001/internal/infrastructure/db/models"
@@ -27,6 +28,9 @@ func NewGormWarehouseRepository(db *gorm.DB) stock.WarehouseRepository {
 }
 
 func (r *gormWarehouseRepository) Create(ctx context.Context, w *stock.Warehouse) error {
+	if w.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromWarehouseDomainEntity(w)
 	return r.db.WithContext(ctx).Create(model).Error
 }
@@ -40,6 +44,9 @@ func (r *gormWarehouseRepository) GetByID(ctx context.Context, id uuid.UUID) (*s
 }
 
 func (r *gormWarehouseRepository) Update(ctx context.Context, w *stock.Warehouse) error {
+	if w.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	model := fromWarehouseDomainEntity(w)
 	return r.db.WithContext(ctx).Save(model).Error
 }
@@ -75,6 +82,9 @@ func NewGormBinRepository(db *gorm.DB) stock.BinRepository {
 }
 
 func (r *gormBinRepository) Create(ctx context.Context, b *stock.Bin) error {
+	if b.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromBinDomainEntity(b)
 	return r.db.WithContext(ctx).Create(model).Error
 }
@@ -88,6 +98,9 @@ func (r *gormBinRepository) GetByID(ctx context.Context, id uuid.UUID) (*stock.B
 }
 
 func (r *gormBinRepository) Update(ctx context.Context, b *stock.Bin) error {
+	if b.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	model := fromBinDomainEntity(b)
 	return r.db.WithContext(ctx).Save(model).Error
 }
@@ -150,6 +163,12 @@ func (r *gormStockRepository) GetStockForUpdate(ctx context.Context, itemID, war
 	return toStockDomainEntity(&model), nil
 }
 
+func (r *gormStockRepository) GetTotalQuantity(ctx context.Context, itemID uuid.UUID) (float64, error) {
+	var total float64
+	err := r.db.WithContext(ctx).Model(&models.Stock{}).Where("item_id = ?", itemID).Select("COALESCE(SUM(quantity), 0)").Scan(&total).Error
+	return total, err
+}
+
 func (r *gormStockRepository) UpsertStock(ctx context.Context, s *stock.Stock) error {
 	model := fromStockDomainEntity(s)
 	// Use Clauses(clause.OnConflict) to perform an upsert.
@@ -174,6 +193,9 @@ func NewGormStockMovementRepository(db *gorm.DB) stock.StockMovementRepository {
 }
 
 func (r *gormStockMovementRepository) Create(ctx context.Context, sm *stock.StockMovement) error {
+	if sm.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromStockMovementDomainEntity(sm)
 	return r.db.WithContext(ctx).Create(model).Error
 }
@@ -201,6 +223,9 @@ func NewGormStockLedgerRepository(db *gorm.DB) stock.StockLedgerRepository {
 }
 
 func (r *gormStockLedgerRepository) Create(ctx context.Context, sl *stock.StockLedger) error {
+	if sl.RecordedBy == uuid.Nil {
+		return errors.New("recorded_by is required")
+	}
 	model := fromStockLedgerDomainEntity(sl)
 	return r.db.WithContext(ctx).Create(model).Error
 }

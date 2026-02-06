@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"doligo_001/internal/domain/item"
 	"doligo_001/internal/infrastructure/db/models"
@@ -27,6 +28,9 @@ func NewGormItemRepository(db *gorm.DB) item.Repository {
 
 // Create persists a new item to the data store.
 func (r *gormItemRepository) Create(ctx context.Context, i *item.Item) error {
+	if i.CreatedBy == uuid.Nil {
+		return errors.New("created_by is required")
+	}
 	model := fromItemDomainEntity(i)
 	return r.db.WithContext(ctx).Create(model).Error
 }
@@ -42,6 +46,9 @@ func (r *gormItemRepository) GetByID(ctx context.Context, id uuid.UUID) (*item.I
 
 // Update modifies an existing item in the data store.
 func (r *gormItemRepository) Update(ctx context.Context, i *item.Item) error {
+	if i.UpdatedBy == uuid.Nil {
+		return errors.New("updated_by is required")
+	}
 	model := fromItemDomainEntity(i)
 	return r.db.WithContext(ctx).Save(model).Error
 }

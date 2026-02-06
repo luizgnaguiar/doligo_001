@@ -23,7 +23,7 @@ var (
 
 // UseCase defines the interface for stock management use cases.
 type UseCase interface {
-	CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error)
+	CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, unitPrice float64, reason string) (*stock.StockMovement, error)
 	ReverseStockMovement(ctx context.Context, movementID uuid.UUID, reason string) (*stock.StockMovement, error)
 	CreateWarehouse(ctx context.Context, name string) (*stock.Warehouse, error)
 	ListWarehouses(ctx context.Context) ([]*stock.Warehouse, error)
@@ -68,7 +68,7 @@ func NewUseCase(
 }
 
 // CreateStockMovement handles the logic for creating a stock movement atomically.
-func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, reason string) (*stock.StockMovement, error) {
+func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehouseID, binID uuid.UUID, movementType stock.MovementType, quantity float64, unitPrice float64, reason string) (*stock.StockMovement, error) {
 	var createdMovement *stock.StockMovement
 	var quantityBefore float64
 	var quantityAfter float64
@@ -87,13 +87,41 @@ func (uc *stockUseCase) CreateStockMovement(ctx context.Context, itemID, warehou
 		txWarehouseRepo := uc.warehouseRepo.WithTx(tx)
 		txBinRepo := uc.binRepo.WithTx(tx)
 
-		// Validate ItemID
-		_, err := txItemRepo.GetByID(ctx, itemID)
+		// Validate ItemID and get current CMP
+		it, err := txItemRepo.GetByID(ctx, itemID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.New("item not found")
 			}
 			return err
+		}
+
+		// Calculate CMP if it's an IN movement
+		if movementType == stock.MovementTypeIn {
+			totalQtyBefore, err := txStockRepo.GetTotalQuantity(ctx, itemID)
+			if err != nil {
+				return err
+			}
+
+			// Novo CMP = (Valor Total Antigo + Valor da Nova Entrada) / (Qtd Antiga + Qtd Nova)
+			// Valor Total Antigo = totalQtyBefore * it.AverageCost
+			// Valor da Nova Entrada = quantity * unitPrice
+			
+			oldTotalValue := totalQtyBefore * it.AverageCost
+			newEntryValue := quantity * unitPrice
+			totalQtyAfter := totalQtyBefore + quantity
+			
+			newCMP := (oldTotalValue + newEntryValue) / totalQtyAfter
+			
+			it.AverageCost = newCMP
+			it.CostPrice = unitPrice // Update CostPrice with the latest purchase price as well
+			it.UpdatedAt = time.Now()
+			userID, _ := domain.UserIDFromContext(ctx)
+			it.UpdatedBy = userID
+			
+			if err := txItemRepo.Update(ctx, it); err != nil {
+				return err
+			}
 		}
 
 		// Validate WarehouseID

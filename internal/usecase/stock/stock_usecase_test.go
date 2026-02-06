@@ -166,6 +166,12 @@ func (m *MockStockRepository) GetStockForUpdate(ctx context.Context, itemID, war
 	}
 	return args.Get(0).(*stock.Stock), args.Error(1)
 }
+
+func (m *MockStockRepository) GetTotalQuantity(ctx context.Context, itemID uuid.UUID) (float64, error) {
+	args := m.Called(ctx, itemID)
+	return args.Get(0).(float64), args.Error(1)
+}
+
 func (m *MockStockRepository) UpsertStock(ctx context.Context, stock *stock.Stock) error {
 	args := m.Called(ctx, stock)
 	return args.Error(0)
@@ -183,6 +189,14 @@ func (m *MockStockMovementRepository) WithTx(tx *gorm.DB) stock.StockMovementRep
 func (m *MockStockMovementRepository) Create(ctx context.Context, movement *stock.StockMovement) error {
 	args := m.Called(ctx, movement)
 	return args.Error(0)
+}
+
+func (m *MockStockMovementRepository) GetByID(ctx context.Context, id uuid.UUID) (*stock.StockMovement, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*stock.StockMovement), args.Error(1)
 }
 
 // MockStockLedgerRepository
@@ -276,18 +290,20 @@ func setupTestSuite() *stockUseCaseTestSuite {
 
 func TestCreateStockMovement_In_HappyPath_NoExistingStock(t *testing.T) {
 	s := setupTestSuite()
-	mockItem := &item.Item{ID: s.itemID, Name: "Test Item"}
+	mockItem := &item.Item{ID: s.itemID, Name: "Test Item", AverageCost: 100.0}
 	mockWarehouse := &stock.Warehouse{ID: s.warehouseID, Name: "Main Warehouse", IsActive: true}
 
 	s.txManager.On("Transaction", mock.Anything, mock.Anything).Return(nil).Once()
 	s.itemRepo.On("GetByID", mock.Anything, s.itemID).Return(mockItem, nil).Once()
+	s.stockRepo.On("GetTotalQuantity", mock.Anything, s.itemID).Return(0.0, nil).Once()
+	s.itemRepo.On("Update", mock.Anything, mock.AnythingOfType("*item.Item")).Return(nil).Once()
 	s.warehouseRepo.On("GetByID", mock.Anything, s.warehouseID).Return(mockWarehouse, nil).Once()
 	s.stockRepo.On("GetStockForUpdate", mock.Anything, s.itemID, s.warehouseID, &s.binID).Return(nil, gorm.ErrRecordNotFound).Once()
 	s.stockMoveRepo.On("Create", mock.Anything, mock.AnythingOfType("*stock.StockMovement")).Return(nil).Once()
 	s.stockRepo.On("UpsertStock", mock.Anything, mock.AnythingOfType("*stock.Stock")).Return(nil).Once()
 	s.stockLedgerRepo.On("Create", mock.Anything, mock.AnythingOfType("*stock.StockLedger")).Return(nil).Once()
 
-	movement, err := s.useCase.CreateStockMovement(s.ctx, s.itemID, s.warehouseID, s.binID, stock.MovementTypeIn, 10.0, "Initial Stock")
+	movement, err := s.useCase.CreateStockMovement(s.ctx, s.itemID, s.warehouseID, s.binID, stock.MovementTypeIn, 10.0, 120.0, "Initial Stock")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, movement)
@@ -306,7 +322,7 @@ func TestCreateStockMovement_Out_InsufficientStock(t *testing.T) {
 	s.warehouseRepo.On("GetByID", mock.Anything, s.warehouseID).Return(mockWarehouse, nil).Once()
 	s.stockRepo.On("GetStockForUpdate", mock.Anything, s.itemID, s.warehouseID, &s.binID).Return(existingStock, nil).Once()
 
-	movement, err := s.useCase.CreateStockMovement(s.ctx, s.itemID, s.warehouseID, s.binID, stock.MovementTypeOut, 10.0, "Selling Item")
+	movement, err := s.useCase.CreateStockMovement(s.ctx, s.itemID, s.warehouseID, s.binID, stock.MovementTypeOut, 10.0, 0.0, "Selling Item")
 
 	assert.Error(t, err)
 	assert.Nil(t, movement)
